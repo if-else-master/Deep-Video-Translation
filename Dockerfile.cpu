@@ -33,7 +33,9 @@ RUN pip install --upgrade pip && \
 #RUN pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cpu
 RUN pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 
 # ✅ 6. 安裝 librosa（音訊分析）
-RUN pip install librosa==0.9.2
+#RUN pip install librosa==0.9.2
+RUN pip install librosa==0.10.0
+
 
 # ⚠️ 7. 安裝 dlib：這是雷區！需 ARM 支援
 # ❗建議先試用預編譯的 arm64 wheel（如果失敗，再考慮從 source 編譯）
