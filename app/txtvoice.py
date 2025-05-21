@@ -2,7 +2,7 @@ from google import genai
 from google.genai import types
 
 def voice(voice_file):
-    client = genai.Client(api_key="AIzaSyBJKGYccKXuvl0pYeGmDesqejxdb20EFqY")
+    client = genai.Client(api_key="xxxxx")
 
     myfile = client.files.upload(file=voice_file)
 
