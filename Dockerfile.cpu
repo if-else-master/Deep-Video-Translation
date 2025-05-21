@@ -1,0 +1,59 @@
+# ✅ 1. 用適合 ARM64 架構的 base image
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# ✅ 2. 安裝必要套件
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    gcc \
+    build-essential \
+    cmake \
+    libffi-dev \
+    libsndfile1 \
+    libboost-all-dev \
+    libpng-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    curl \
+    python3-dev \
+    git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ✅ 3. 安裝 Rust（為了建構 whisper / dlib 等）
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# ✅ 4. 安裝 numpy / scipy
+RUN pip install --upgrade pip && \
+    pip install numpy==1.23.5 && \
+    pip install scipy==1.9.3
+
+# ✅ 5. 安裝針對 CPU 的 PyTorch（避免預設拉到 x86 AVX 版本）
+#RUN pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cpu
+RUN pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 
+# ✅ 6. 安裝 librosa（音訊分析）
+RUN pip install librosa==0.9.2
+
+# ⚠️ 7. 安裝 dlib：這是雷區！需 ARM 支援
+# ❗建議先試用預編譯的 arm64 wheel（如果失敗，再考慮從 source 編譯）
+#RUN pip install dlib==19.24.0 --no-binary :all:
+
+# ✅ 8. 安裝你專案的其他依賴
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ✅ 9. 複製程式碼
+COPY . .
+
+# ✅ 10. 建立必要目錄
+RUN mkdir -p temp results
+
+RUN rm -rf ~/.cache/pip
+
+
+# ✅ 11. 預設執行命令（可自定）
+CMD ["python", "app/xttsv.py"]
+
+#ENTRYPOINT ["bash", "-c", "echo starting && exec python app/Audio2Text.py"]
+
