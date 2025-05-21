@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  wav2lip:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    container_name: wav2lip-cpu-container
+    volumes:
+      - .:/app
+    working_dir: /app
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    shm_size: 2gb

@@ -1,0 +1,32 @@
+FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu18.04
+
+WORKDIR /workspace
+
+# 安裝系統套件與 Python 環境
+RUN apt-get update && apt-get install -y \
+    build-essential cmake git curl ca-certificates \
+    vim ffmpeg \
+    python3-pip python3-dev python3-wheel \
+    libglib2.0-0 libxrender1 python3-soundfile \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --upgrade setuptools
+
+# 下載 Wav2Lip
+RUN git clone https://github.com/Rudrabha/Wav2Lip
+WORKDIR /workspace/Wav2Lip
+
+# 安裝 torch 與 GPU 相容版本
+RUN pip3 install torch==1.7.1+cu101 torchvision==0.8.2+cu101 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
+
+# 安裝其餘需求
+RUN pip3 install -r requirements.txt
+
+# 下載模型
+RUN mkdir -p /root/.cache/torch/checkpoints && \
+    curl -SL -o /root/.cache/torch/checkpoints/s3fd-619a316812.pth "https://www.adrianbulat.com/downloads/python-fan/s3fd-619a316812.pth"
+
+# 建立工作區
+RUN mkdir /workspace/src
+WORKDIR /workspace/src
+
+CMD ["bash"]

@@ -55,7 +55,7 @@ RUN rm -rf ~/.cache/pip
 
 
 # ✅ 11. 預設執行命令（可自定）
-CMD ["python", "app/xttsv.py"]
+CMD ["python", "app/Wav2Lip/inference.py"]
 
 #ENTRYPOINT ["bash", "-c", "echo starting && exec python app/Audio2Text.py"]
 

@@ -1,0 +1,57 @@
+#docker build -t my-mac-docker-app .
+#docker run -p 5000:5050 my-mac-docker-app
+
+docker-compose up --build
+docker-compose build --no-cache       
+docker run -it --rm -p 5050:5000 deep-video-translation-web:latest
+
+#如有修改程式碼
+docker build -t deep-video-translation-web:latest .
+
+
+#開發時使用
+docker-compose up
+
+docker run -it --rm -p 5050:5000 -v $(pwd):/app deep-video-translation-web:latest
+
+docker run -it --rm -p 5050:5000 -v $(pwd):/app deep-video-translation-wav2lip:latest
+
+
+third_part.GPEN.
+
+docker run --rm -v $PWD:/app wav2lip-cpu \
+    python /app/app/Wav2Lip/inference.py \
+    --checkpoint_path /app/app/Wav2Lip/checkpoints \
+    --face /app/app/Wav2Lip/222.mp4 \
+    --audio /app/app/Wav2Lip/output.wav
+
+python Wav2Lip/inference.py \
+    --checkpoint_path 
+    --face Wav2Lip/222.mp4 \
+    --audio Wav2Lip/output.wav
+
+
+
+在 Mac 或 Windows 上執行（CPU 版本）：
+docker build -t wav2lip-cpu -f Dockerfile.cpu .
+docker run --rm -v $PWD:/app wav2lip-cpu
+docker run --privileged -v $PWD:/app wav2lip-cpu
+docker run --rm -v $PWD:/app xttsvv
+
+在 Windows/Linux 有 GPU 的機器上執行：
+docker build -t wav2lip-gpu -f Dockerfile.gpu .
+xhost +local:root  # 若要顯示視覺輸出
+docker run --rm --gpus all -v /tmp/.X11-unix:/tmp/.X11-unix -v $PWD:/workspace/src -e DISPLAY=$DISPLAY --device /dev/dri -ti wav2lip-gpu bash
+
+
+/usr/local/lib/python3.10/site-packages/whisper/transcribe.py:126: UserWarning: FP16 is not supported on CPU; using FP32 instead
+wav2lip-cpu-container  |   warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+docker run -it --entrypoint bash deep-video-translation-wav2lip:latest
+docker run -it --entrypoint bash deep-video-translation-wav2lip:latest
+#docker 日誌
+docker system events --since 30m 
+
+docker exec -it 63cd96639e7d551eda72baa42e9a7ef52946108e73a2b5cd1c6f2e2a283bf971 /bin/bash
+
+docker-compose --verbose up
