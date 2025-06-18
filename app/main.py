@@ -14,7 +14,7 @@ class DeepVideoTranslationApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Deep Video Translation")
-        self.root.geometry("800x600")
+        self.root.geometry("900x700")
         
         # 創建主框架
         main_frame = ttk.Frame(root, padding="10")
@@ -25,45 +25,51 @@ class DeepVideoTranslationApp:
         self.api_key_var = tk.StringVar()
         ttk.Entry(main_frame, textvariable=self.api_key_var, width=50).grid(row=0, column=1, columnspan=2, sticky=tk.W, pady=5)
         
-        # 輸入文件選擇
-        ttk.Label(main_frame, text="輸入文件:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        # 輸入音檔選擇
+        ttk.Label(main_frame, text="輸入音檔:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.input_path_var = tk.StringVar()
         ttk.Entry(main_frame, textvariable=self.input_path_var, width=50).grid(row=1, column=1, sticky=tk.W, pady=5)
         ttk.Button(main_frame, text="瀏覽", command=self.browse_input).grid(row=1, column=2, padx=5)
         
+        # 語言選擇
+        ttk.Label(main_frame, text="翻譯語言:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        self.language_var = tk.StringVar(value="日文")
+        language_combo = ttk.Combobox(main_frame, textvariable=self.language_var, values=["日文", "英文", "中文"], width=47)
+        language_combo.grid(row=2, column=1, sticky=tk.W, pady=5)
+        
         # 嘴形目標選擇
-        ttk.Label(main_frame, text="嘴形目標視頻:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="嘴形目標視頻:").grid(row=3, column=0, sticky=tk.W, pady=5)
         self.face_path_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.face_path_var, width=50).grid(row=2, column=1, sticky=tk.W, pady=5)
-        ttk.Button(main_frame, text="瀏覽", command=self.browse_face).grid(row=2, column=2, padx=5)
+        ttk.Entry(main_frame, textvariable=self.face_path_var, width=50).grid(row=3, column=1, sticky=tk.W, pady=5)
+        ttk.Button(main_frame, text="瀏覽", command=self.browse_face).grid(row=3, column=2, padx=5)
         
         # 輸出文件選擇
-        ttk.Label(main_frame, text="輸出文件:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="輸出文件:").grid(row=4, column=0, sticky=tk.W, pady=5)
         self.output_path_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.output_path_var, width=50).grid(row=3, column=1, sticky=tk.W, pady=5)
-        ttk.Button(main_frame, text="瀏覽", command=self.browse_output).grid(row=3, column=2, padx=5)
+        ttk.Entry(main_frame, textvariable=self.output_path_var, width=50).grid(row=4, column=1, sticky=tk.W, pady=5)
+        ttk.Button(main_frame, text="瀏覽", command=self.browse_output).grid(row=4, column=2, padx=5)
         
         # 進度條
         self.progress = ttk.Progressbar(main_frame, length=300, mode='determinate')
-        self.progress.grid(row=4, column=0, columnspan=3, pady=20)
+        self.progress.grid(row=5, column=0, columnspan=3, pady=20)
         
         # 開始按鈕
-        ttk.Button(main_frame, text="開始處理", command=self.process).grid(row=5, column=0, columnspan=3, pady=10)
+        ttk.Button(main_frame, text="開始處理", command=self.process).grid(row=6, column=0, columnspan=3, pady=10)
         
         # 狀態標籤
         self.status_var = tk.StringVar()
         self.status_var.set("準備就緒")
-        ttk.Label(main_frame, textvariable=self.status_var).grid(row=6, column=0, columnspan=3, pady=5)
+        ttk.Label(main_frame, textvariable=self.status_var).grid(row=7, column=0, columnspan=3, pady=5)
 
     def browse_input(self):
         filename = filedialog.askopenfilename(
-            filetypes=[("Video/Audio files", "*.mp4 *.wav *.mp3")]
+            filetypes=[("Audio/Video files", "*.mp4 *.wav *.mp3 *.m4a")]
         )
         if filename:
             self.input_path_var.set(filename)
             # 自動設置輸出路徑
             base_name = os.path.splitext(filename)[0]
-            self.output_path_var.set(f"{base_name}_output.mp4")
+            self.output_path_var.set(f"{base_name}_translated.mp4")
 
     def browse_face(self):
         filename = filedialog.askopenfilename(
@@ -84,6 +90,7 @@ class DeepVideoTranslationApp:
         # 獲取輸入值
         api_key = self.api_key_var.get()
         input_path = self.input_path_var.get()
+        language = self.language_var.get()
         face_path = self.face_path_var.get()
         output_path = self.output_path_var.get()
         
@@ -92,10 +99,9 @@ class DeepVideoTranslationApp:
             messagebox.showerror("錯誤", "請填寫所有必要欄位")
             return
             
-        # 檢查文件類型
-        input_ext = os.path.splitext(input_path)[1].lower()
-        if input_ext in ['.wav', '.mp3'] and not face_path:
-            if not messagebox.askyesno("確認", "音頻文件沒有對應的嘴形目標，是否只進行語音克隆？"):
+        # 檢查是否需要嘴形同步
+        if not face_path:
+            if not messagebox.askyesno("確認", "沒有選擇嘴形目標視頻，將只進行語音克隆和翻譯。是否繼續？"):
                 return
         
         try:
@@ -104,26 +110,36 @@ class DeepVideoTranslationApp:
             self.progress['value'] = 0
             self.root.update()
             
-            # 步驟1：語音轉文字
-            self.status_var.set("正在進行語音轉文字...")
-            translated_text = voice(input_path, api_key)
-            self.progress['value'] = 33
+            # 步驟1：語音轉文字並翻譯
+            self.status_var.set("正在進行語音識別和翻譯...")
+            translated_text = voice(input_path, api_key, language)
+            print(f"翻譯結果: {translated_text}")
+            self.progress['value'] = 25
             self.root.update()
             
-            # 步驟2：文字轉語音
-            self.status_var.set("正在進行文字轉語音...")
-            temp_audio = "temp/output.wav"
+            # 步驟2：語音克隆
+            self.status_var.set("正在進行語音克隆...")
+            temp_audio = "temp/cloned_audio.wav"
             os.makedirs("temp", exist_ok=True)
-            audio_path = xttsv(translated_text, temp_audio)
-            self.progress['value'] = 66
+            audio_path = xttsv(translated_text, input_path, temp_audio, language)
+            self.progress['value'] = 60
             self.root.update()
             
             # 步驟3：嘴形同步（如果有嘴形目標）
             if face_path:
                 self.status_var.set("正在進行嘴形同步...")
                 run_inference(face_path, audio_path, output_path)
+                self.progress['value'] = 100
+            else:
+                # 如果沒有嘴形目標，直接複製音檔到輸出位置
+                import shutil
+                audio_output = output_path.replace('.mp4', '.wav')
+                shutil.copy(audio_path, audio_output)
+                self.progress['value'] = 100
+                messagebox.showinfo("完成", f"語音克隆完成！音檔已保存到：{audio_output}")
+                self.status_var.set("處理完成！")
+                return
             
-            self.progress['value'] = 100
             self.status_var.set("處理完成！")
             messagebox.showinfo("完成", "處理已完成！")
             
