@@ -120,7 +120,7 @@ def run_inference(face_path, audio_path, output_path):
             out.write(f)
 ```
 
-### 4. 智能投影片翻譯
+### 4. 簡報OCR翻譯
 
 ```python
 def is_slide_frame(self, frame):
