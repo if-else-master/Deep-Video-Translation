@@ -122,22 +122,64 @@ def run_inference(face_path, audio_path, output_path):
 
 ### 4. 簡報OCR翻譯
 
+#### 🔍 識別簡報與人臉技術架構
+
+系統使用多層次檢測機制來區分「人臉講話畫面」和「簡報展示畫面」：
+
+**人臉檢測技術**
 ```python
-def is_slide_frame(self, frame):
-    """判斷是否為簡報頁面（沒有人臉且有文字內容）"""
-    # 檢查是否有人臉
+def detect_faces_in_frame(self, frame):
+    """檢測幀中是否有人臉"""
+    # 使用 OpenCV 的 Haar Cascade 分類器
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-    
-    if len(faces) > 0:
+    return len(faces) > 0
+```
+
+**簡報頁面判斷邏輯**
+```python
+def is_slide_frame(self, frame):
+    """判斷是否為簡報頁面（沒有人臉且有文字內容）"""
+    # 第一步：人臉檢測
+    has_faces = self.detect_faces_in_frame(frame)
+    if has_faces:
         return False  # 有人臉，不是簡報
     
-    # 使用邊緣檢測判斷是否有文字內容
-    edges = cv2.Canny(gray, 50, 150)
+    # 第二步：文字內容檢測
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)  # Canny 邊緣檢測
     edge_ratio = np.sum(edges > 0) / edges.size
+    
+    # 邊緣比例在合理範圍內，判定為簡報
+    # 太少邊緣可能是空白，太多邊緣可能是雜亂背景
     return 0.01 < edge_ratio < 0.3
+```
 
+**多層次檢測機制**
+
+| 檢測層次 | 技術方法 | 判斷標準 |
+|---------|---------|---------|
+| **1. 影像變化檢測** | ImageHash | `abs(curr_hash - prev_hash) > threshold` |
+| **2. 人臉存在檢測** | Haar Cascade | `len(faces) > 0` |
+| **3. 文字內容檢測** | Canny 邊緣檢測 | `0.01 < edge_ratio < 0.3` |
+
+**決策樹邏輯**
+```
+影像幀 → 影像有變化? → 檢測到人臉? → 邊緣比例適中?
+   ↓           ↓           ↓           ↓
+ 跳過      人臉講話畫面   簡報頁面   空白/雜亂畫面
+                           ↓
+                     進行OCR翻譯
+```
+
+**技術原理說明**
+- **Haar Cascade**: 使用預訓練的人臉檢測模型，參數 `(1.1, 4)` 分別為縮放因子和最少檢測矩形數
+- **Canny 邊緣檢測**: 參數 `(50, 150)` 為低/高閾值，簡報文字會產生適量邊緣
+- **邊緣比例閾值**: `0.01-0.3` 範圍避免空白頁面和複雜背景的誤判
+
+**投影片處理流程**
+```python
 def process_slide_image(self, image_path, output_path, target_lang):
     """處理單張投影片圖片"""
     img = cv2.imread(image_path)
@@ -161,6 +203,17 @@ def process_slide_image(self, image_path, output_path, target_lang):
     pil_img = Image.fromarray(cv2.cvtColor(img_clean, cv2.COLOR_BGR2RGB))
     final = self.draw_translated_text(pil_img, boxes, translated, font_path)
     final.save(output_path)
+```
+
+**智能檢測在視頻處理中的應用**
+```python
+# 只處理被識別為簡報的畫面
+if self.is_slide_frame(frame):
+    # 保存並翻譯投影片
+    slide_path = os.path.join(slides_dir, f'slide_{slide_index:02d}.jpg')
+    self.process_slide_image(slide_path, translated_path, target_lang)
+    # 記錄幀號映射用於後續視頻合成
+    slide_frame_mapping[frame_count] = slide_index
 ```
 
 ## 📦 安裝指南
