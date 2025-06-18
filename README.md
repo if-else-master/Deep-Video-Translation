@@ -25,7 +25,7 @@
 
 ### 工具與框架
 
-- **Python 3.8+**
+- **Python 3.10**
 - **PyTorch** - 深度學習框架
 - **FFmpeg** - 音視頻處理
 - **tkinter** - GUI 界面
