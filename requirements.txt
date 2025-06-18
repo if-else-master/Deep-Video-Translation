@@ -56,3 +56,7 @@ facexlib==0.2.5
 #dlib
 gradio>=3.7.0
 google-genai
+
+easyocr==1.7.2
+
+imagehash==4.3.2
