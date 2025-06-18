@@ -1,5 +1,5 @@
 # Deep-Video-Translation
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)<br>
 一個基於 AI 的深度視頻翻譯系統，集成語音識別、語音克隆、嘴形同步和智能投影片翻譯功能。
 
 ## 🎯 專案特色
