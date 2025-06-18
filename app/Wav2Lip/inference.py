@@ -1,10 +1,12 @@
 from os import listdir, path
 import numpy as np
-import scipy, cv2, os, sys, argparse, audio
+import scipy, cv2, os, sys, argparse
+import audio
 import json, subprocess, random, string
 from tqdm import tqdm
 from glob import glob
-import torch, face_detection
+import torch
+from face_detection import FaceAlignment, LandmarksType
 from models import Wav2Lip
 import platform
 
@@ -67,7 +69,7 @@ def get_smoothened_boxes(boxes, T):
 	return boxes
 
 def face_detect(images):
-	detector = face_detection.FaceAlignment(face_detection.LandmarksType._2D, 
+	detector = FaceAlignment(LandmarksType._2D, 
 											flip_input=False, device=device)
 
 	batch_size = args.face_det_batch_size
@@ -179,7 +181,11 @@ def load_model(path):
 	model = model.to(device)
 	return model.eval()
 
-def main():
+def run_inference(face_path, audio_path, output_path):
+	args.face = face_path
+	args.audio = audio_path
+	args.outfile = output_path
+	
 	if not os.path.isfile(args.face):
 		raise ValueError('--face argument must be a valid path to video/image file')
 
@@ -248,7 +254,7 @@ def main():
 	gen = datagen(full_frames.copy(), mel_chunks)
 
 	for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen, 
-											total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
+												total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
 		if i == 0:
 			model = load_model(args.checkpoint_path)
 			print ("Model loaded")
@@ -276,6 +282,8 @@ def main():
 
 	command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(args.audio, 'temp/result.avi', args.outfile)
 	subprocess.call(command, shell=platform.system() != 'Windows')
+	
+	return output_path
 
-if __name__ == '__main__':
-	main()
+# if __name__ == '__main__':
+# 	main()

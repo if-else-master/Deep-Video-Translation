@@ -3,8 +3,9 @@ from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
 import soundfile as sf
 import numpy as np
+import os
 
-def main():
+def xttsv(text, output_path="output.wav"):
     config = XttsConfig()
     config.load_json("app/XTTS-v2/config.json")
     model = Xtts.init_from_config(config)
@@ -13,7 +14,6 @@ def main():
     model.to(device)
 
     speaker_wav = "app/XTTS-v2/samples/zh-cn-sample.wav"
-    text = "It took me quite a long time to develop a voice and now that I have it I am not going to be silent."
 
     outputs = model.synthesize(
         text,
@@ -39,8 +39,13 @@ def main():
     if len(audio.shape) == 1:
         audio = audio.reshape(-1, 1)
 
-    sf.write("output.wav", audio, samplerate=config.audio["sample_rate"])
-    print("已輸出音訊檔 output.wav")
+    # 确保输出目录存在
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    sf.write(output_path, audio, samplerate=config.audio["sample_rate"])
+    print(f"已輸出音訊檔 {output_path}")
+    
+    return output_path
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
