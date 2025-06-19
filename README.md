@@ -312,6 +312,9 @@ Deep-Video-Translation/
 └── README.md                     # 說明文件
 ```
 
+## 未來目標
+加上 RAG
+
 ## 📄 授權條款
 
 本專案採用 MIT 授權條款 - 詳見 [LICENSE](LICENSE) 文件
