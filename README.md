@@ -1,5 +1,5 @@
 # Deep-Video-Translation
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)<br>
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)<br>
 AI 深度影片翻譯系統，集成語音識別、語音複製、嘴形調整和 OCR 簡報翻譯功能。
 ## 🎯 專案特色
 
@@ -317,7 +317,7 @@ Deep-Video-Translation/
 
 ## 📄 授權條款
 
-本專案採用 MIT 授權條款 - 詳見 [LICENSE](LICENSE) 文件
+本專案採用 GPLv3 授權條款 - 詳見 [LICENSE](LICENSE) 文件
 
 ## 🙏 致謝
 
