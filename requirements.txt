@@ -60,3 +60,5 @@ google-genai
 easyocr==1.7.2
 
 imagehash==4.3.2
+
+pypinyin

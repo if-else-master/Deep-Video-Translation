@@ -5,6 +5,7 @@ import soundfile as sf
 import numpy as np
 import os
 import subprocess
+import re
 
 def extract_audio_from_video(video_path, output_audio_path):
     """從視頻文件中提取音頻"""
@@ -14,6 +15,55 @@ def extract_audio_from_video(video_path, output_audio_path):
         return output_audio_path
     except subprocess.CalledProcessError as e:
         raise Exception(f"音頻提取失敗: {e}")
+
+def split_text(text, max_length=80):
+    """將長文本分割成較小的片段"""
+    if len(text) <= max_length:
+        return [text]
+    
+    # 優先按句號分割
+    sentences = re.split(r'[.!?。！？]', text)
+    chunks = []
+    current_chunk = ""
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+            
+        # 如果當前句子本身就太長，按逗號分割
+        if len(sentence) > max_length:
+            sub_sentences = re.split(r'[,，]', sentence)
+            for sub_sentence in sub_sentences:
+                sub_sentence = sub_sentence.strip()
+                if not sub_sentence:
+                    continue
+                    
+                if len(current_chunk + sub_sentence) <= max_length:
+                    current_chunk += sub_sentence + "，"
+                else:
+                    if current_chunk:
+                        chunks.append(current_chunk.rstrip("，"))
+                        current_chunk = sub_sentence + "，"
+                    else:
+                        # 如果單個子句還是太長，強制分割
+                        if len(sub_sentence) > max_length:
+                            for i in range(0, len(sub_sentence), max_length):
+                                chunks.append(sub_sentence[i:i+max_length])
+                        else:
+                            current_chunk = sub_sentence + "，"
+        else:
+            if len(current_chunk + sentence) <= max_length:
+                current_chunk += sentence + "。"
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.rstrip("。"))
+                current_chunk = sentence + "。"
+    
+    if current_chunk:
+        chunks.append(current_chunk.rstrip("。，"))
+    
+    return chunks
 
 def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文"):
     config = XttsConfig()
@@ -47,43 +97,88 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
         # 如果已經是 WAV 格式，直接使用
         speaker_wav = speaker_audio_path
     
-    # 設置語言代碼
-    language_codes = {
-        "日文": "ja",
-        "英文": "en", 
-        "中文": "zh"
+    # 設置語言代碼和字符限制
+    language_configs = {
+        "日文": {"code": "ja", "max_length": 80},
+        "英文": {"code": "en", "max_length": 100}, 
+        "中文": {"code": "zh", "max_length": 82}
     }
     
-    language_code = language_codes.get(language, "en")
+    lang_config = language_configs.get(language, {"code": "en", "max_length": 100})
+    language_code = lang_config["code"]
+    max_length = lang_config["max_length"]
 
-    outputs = model.synthesize(
-        text,
-        config,
-        speaker_wav=speaker_wav,
-        gpt_cond_len=3,
-        language=language_code,
-    )
-
-    # 从字典中获取音频数据
-    if isinstance(outputs, dict):
-        audio = outputs.get("wav", None)
-        if audio is None:
-            raise ValueError("无法在模型输出中找到音频数据")
+    # 檢查文本長度並分割
+    if len(text) > max_length:
+        print(f"文本長度 {len(text)} 超過限制 {max_length}，進行分割處理...")
+        text_chunks = split_text(text, max_length)
+        print(f"分割為 {len(text_chunks)} 個片段")
+        
+        # 分別合成每個片段
+        audio_chunks = []
+        for i, chunk in enumerate(text_chunks):
+            print(f"正在合成第 {i+1}/{len(text_chunks)} 片段: {chunk[:50]}...")
+            
+            outputs = model.synthesize(
+                chunk,
+                config,
+                speaker_wav=speaker_wav,
+                gpt_cond_len=3,
+                language=language_code,
+            )
+            
+            # 从字典中获取音频数据
+            if isinstance(outputs, dict):
+                audio = outputs.get("wav", None)
+                if audio is None:
+                    raise ValueError("无法在模型输出中找到音频数据")
+            else:
+                audio = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+            
+            # 确保音频数据是正确的格式
+            if isinstance(audio, torch.Tensor):
+                audio = audio.cpu().numpy()
+            
+            audio_chunks.append(audio)
+        
+        # 合併所有音頻片段
+        print("正在合併音頻片段...")
+        if audio_chunks:
+            combined_audio = np.concatenate(audio_chunks, axis=0)
+        else:
+            raise ValueError("沒有生成任何音頻片段")
     else:
-        audio = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+        # 文本長度在限制內，直接合成
+        outputs = model.synthesize(
+            text,
+            config,
+            speaker_wav=speaker_wav,
+            gpt_cond_len=3,
+            language=language_code,
+        )
+
+        # 从字典中获取音频数据
+        if isinstance(outputs, dict):
+            audio = outputs.get("wav", None)
+            if audio is None:
+                raise ValueError("无法在模型输出中找到音频数据")
+        else:
+            audio = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+        
+        # 确保音频数据是正确的格式
+        if isinstance(audio, torch.Tensor):
+            audio = audio.cpu().numpy()
+        
+        combined_audio = audio
     
     # 确保音频数据是正确的格式
-    if isinstance(audio, torch.Tensor):
-        audio = audio.cpu().numpy()
-    
-    # 确保音频数据是二维的
-    if len(audio.shape) == 1:
-        audio = audio.reshape(-1, 1)
+    if len(combined_audio.shape) == 1:
+        combined_audio = combined_audio.reshape(-1, 1)
 
     # 确保输出目录存在
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    sf.write(output_path, audio, samplerate=config.audio["sample_rate"])
+    sf.write(output_path, combined_audio, samplerate=config.audio["sample_rate"])
     print(f"已輸出克隆音訊檔 {output_path}")
     
     return output_path
