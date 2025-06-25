@@ -7,6 +7,8 @@ AI 深度影片翻譯系統，集成語音識別、語音複製、嘴形調整�
 - **🗣️ AI 語音克隆**：使用 XTTS-v2 模型進行高品質語音合成
 - **👄 嘴形同步**：利用 Wav2Lip 技術實現精確的唇語同步
 - **📊 OCR簡報翻譯**：自動識別簡報頁面並進行 OCR 文字翻譯
+- **🧠 智能分段處理**：自動區分人臉講話與簡報展示，分別處理後智能合併
+- **🎬 多重合併策略**：解決不同解析度視頻合併問題，確保完整輸出
 - **🖥️ 圖形化界面**：tkinter GUI 操作介面
 
 ## 🛠️ 技術架構
@@ -119,9 +121,50 @@ def run_inference(face_path, audio_path, output_path):
             out.write(f)
 ```
 
-### 4. 簡報OCR翻譯
+### 4. 智能分段處理系統
 
-#### 🔍 識別簡報與人臉技術架構
+#### 🧠 智能分段處理架構
+
+系統的核心創新在於**智能分段處理**，能夠自動分析視頻內容，區分「人臉講話片段」和「簡報展示片段」，分別進行最適合的處理方式，最後智能合併為完整視頻。
+
+**處理流程概覽**
+```python
+def analyze_and_segment_video(self, video_path):
+    """分析影片並智能分段，分離人臉和簡報片段"""
+    segments = []
+    current_segment = None
+    
+    for frame_count, frame in enumerate(video_frames):
+        # 檢測內容類型
+        has_faces = self.detect_faces_in_frame(frame)
+        is_slide = self.is_slide_frame(frame)
+        
+        # 決定段落類型
+        if has_faces:
+            segment_type = "face"     # 人臉講話片段
+        elif is_slide:
+            segment_type = "slide"    # 簡報展示片段
+        else:
+            segment_type = "unknown"  # 未知內容
+        
+        # 智能分段邏輯
+        if self.should_create_new_segment(current_segment, segment_type, frame):
+            segments.append(current_segment)
+            current_segment = self.create_new_segment(segment_type, frame_count)
+    
+    return segments
+```
+
+**分段決策算法**
+
+| 檢測項目 | 技術方法 | 判斷條件 | 處理策略 |
+|---------|---------|---------|---------|
+| **場景變化** | ImageHash | `abs(curr_hash - prev_hash) > threshold` | 觸發新段落 |
+| **人臉檢測** | Haar Cascade | `len(faces) > 0` | 嘴形同步處理 |
+| **簡報檢測** | 邊緣密度分析 | `0.01 < edge_ratio < 0.3` | OCR翻譯處理 |
+| **最小時長** | 幀數統計 | `frames >= min_duration * fps` | 段落有效性 |
+
+#### 🔍 人臉與簡報識別技術
 
 系統使用多層次檢測機制來區分「人臉講話畫面」和「簡報展示畫面」：
 
@@ -204,15 +247,144 @@ def process_slide_image(self, image_path, output_path, target_lang):
     final.save(output_path)
 ```
 
-**智能檢測在視頻處理中的應用**
+**分段提取與處理**
 ```python
-# 只處理被識別為簡報的畫面
-if self.is_slide_frame(frame):
-    # 保存並翻譯投影片
-    slide_path = os.path.join(slides_dir, f'slide_{slide_index:02d}.jpg')
-    self.process_slide_image(slide_path, translated_path, target_lang)
-    # 記錄幀號映射用於後續視頻合成
-    slide_frame_mapping[frame_count] = slide_index
+def extract_segments(self, video_path, segments, face_dir, ppt_dir):
+    """提取並儲存影片段落，每個段落包含完整的音視頻"""
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    for segment in segments:
+        start_frame = segment['start_frame']
+        end_frame = segment['end_frame']
+        start_time = start_frame / fps
+        duration = (end_frame - start_frame + 1) / fps
+        
+        if segment['type'] == 'face':
+            output_path = os.path.join(face_dir, f"{face_count:02d}.mp4")
+        elif segment['type'] == 'slide':
+            output_path = os.path.join(ppt_dir, f"{slide_count:02d}.mp4")
+        
+        # 使用 FFmpeg 提取完整音視頻段落
+        command = f'ffmpeg -y -i "{video_path}" -ss {start_time} -t {duration} -c:v libx264 -c:a aac "{output_path}"'
+        subprocess.run(command, shell=True)
+```
+
+#### 🎭 人臉段落處理流程
+
+**步驟1：音頻提取與翻譯**
+```python
+def process_face_segments(self, face_dir, language):
+    for segment_file in face_files:
+        # 1. 語音轉文字並翻譯
+        translated_text = voice(segment_file, api_key, language)
+        
+        # 2. 語音克隆
+        audio_path = xttsv(translated_text, segment_file, temp_audio, language)
+        
+        # 3. 嘴形同步
+        run_inference(segment_file, audio_path, processed_path)
+```
+
+#### 📊 簡報段落處理流程
+
+**步驟1：音頻處理**
+```python
+def process_slide_segments(self, ppt_dir, language, slide_language):
+    for segment_file in ppt_files:
+        # 1. 語音轉文字並翻譯
+        translated_text = voice(segment_file, api_key, language)
+        
+        # 2. 語音克隆
+        if translated_text:
+            audio_path = xttsv(translated_text, segment_file, temp_audio, language)
+```
+
+**步驟2：OCR翻譯處理**
+```python
+def process_slide_video(self, input_video, output_video, target_lang, audio_path):
+    """處理簡報影片，進行OCR翻譯"""
+    cap = cv2.VideoCapture(input_video)
+    
+    # 逐幀處理OCR翻譯
+    while True:
+        ret, frame = cap.read()
+        if not ret: break
+        
+        # 檢測場景變化
+        if frame_count % 10 == 0:
+            curr_hash = imagehash.phash(frame)
+            if abs(curr_hash - prev_hash) > threshold:
+                # 進行OCR翻譯
+                translated_frame = self.translate_frame_text(frame, target_lang)
+                current_translated_frame = translated_frame
+        
+                 # 輸出翻譯後的幀
+         output_frame = current_translated_frame if current_translated_frame else frame
+         out.write(output_frame)
+```
+
+#### 🎬 智能合併系統
+
+處理完所有段落後，系統需要將不同解析度的視頻段落智能合併。這是技術挑戰最大的部分。
+
+**解析度統一技術**
+
+不同處理方式會導致不同的輸出解析度：
+- **人臉段落**: Wav2Lip 輸出通常為 640x360
+- **簡報段落**: 原始解析度可能為 1280x720 或更高
+
+**多重合併策略**
+```python
+def auto_edit_segments(self, face_segments, slide_segments, segments_info, output_path):
+    """根據原始順序自動剪接所有段落"""
+    
+    # 方法1：Filter Complex 統一解析度合併
+    if len(ordered_segments) == 2:
+        command = f'''ffmpeg -y -i "{segments[0]}" -i "{segments[1]}" 
+        -filter_complex "[0:v]scale=1280:720,setsar=1:1[v0];
+                        [1:v]scale=1280:720,setsar=1:1[v1];
+                        [0:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a0];
+                        [1:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a1];
+                        [v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" 
+        -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac "{output_path}"'''
+    
+    # 方法2：預處理統一解析度
+    normalized_segments = []
+    for segment in ordered_segments:
+        normalized_path = segment.replace('.mp4', '_normalized.mp4')
+        command = f'''ffmpeg -y -i "{segment}" 
+        -vf scale=1280:720:force_original_aspect_ratio=decrease,
+            pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1:1 
+        -af aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono 
+        -c:v libx264 -c:a aac "{normalized_path}"'''
+    
+    # 方法3：逐個兩兩合併
+    # 方法4：直接複製備用方案
+```
+
+**合併技術原理**
+
+| 方法 | 技術核心 | 優點 | 缺點 |
+|------|---------|------|------|
+| **Filter Complex** | FFmpeg濾鏡鏈一次性處理 | 效率高，質量好 | 複雜視頻可能失敗 |
+| **預處理統一** | 先統一再concat | 兼容性好 | 需要額外存儲空間 |
+| **逐個合併** | 兩兩遞歸合併 | 最穩定可靠 | 處理時間較長 |
+| **直接複製** | 最後備用方案 | 絕對不會失敗 | 僅保留首個段落 |
+
+**解析度統一算法**
+```python
+# 保持寬高比的智能縮放
+scale=1280:720:force_original_aspect_ratio=decrease
+
+# 居中填充黑邊
+pad=1280:720:(ow-iw)/2:(oh-ih)/2
+
+# 統一像素寬高比
+setsar=1:1
+
+# 統一音頻格式
+aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono
 ```
 
 ## 📦 安裝指南
@@ -265,29 +437,70 @@ python app/main.py
 ### GUI 操作流程
 
 1. **輸入 Gemini API Key**
-2. **選擇輸入音檔** (支援 MP4, WAV, MP3, M4A)
-3. **設定翻譯語言** (中文/英文/日文)
-4. **可選：啟用投影片翻譯**
-   - 設定投影片翻譯語言
-   - 調整檢測參數
-5. **選擇嘴形目標視頻** (MP4)
-6. **設定輸出路徑**
-7. **開始處理**
+2. **選擇輸入影片** (支援 MP4 格式)
+3. **設定語音翻譯語言** (中文/英文/日文)
+4. **智能分段設定**
+   - **啟用投影片翻譯**: 開啟OCR文字翻譯功能
+   - **投影片翻譯語言**: 設定OCR翻譯目標語言
+   - **最小段落長度**: 設定分段的最小時間長度(秒)
+   - **場景切換門檻**: 調整場景變化檢測靈敏度
+5. **設定輸出路徑**
+6. **開始智能分段處理**
 
-### 處理流程
+### 智能分段處理階段
+
+程序會依序執行以下階段：
+
+**階段1：智能分析與分段 (0-20%)**
+- 逐幀分析影片內容
+- 檢測人臉和簡報場景
+- 根據場景變化和最小時長進行智能分段
+- 提取完整音視頻段落到不同目錄
+
+**階段2：人臉段落處理 (20-70%)**
+- 對每個人臉段落進行語音識別和翻譯
+- 使用XTTS-v2進行語音克隆
+- 通過Wav2Lip實現嘴形同步
+
+**階段3：簡報段落處理 (70-90%)**
+- 對每個簡報段落進行語音識別和翻譯
+- 使用XTTS-v2進行語音克隆
+- 如啟用OCR翻譯，逐幀進行文字識別和翻譯重繪
+
+**階段4：智能合併 (90-100%)**
+- 解析度統一處理
+- 多重合併策略確保成功
+- 按原始順序組合所有段落
+
+### 智能分段處理流程
 
 ```mermaid
 graph TD
-    A[輸入音檔] --> B[語音識別與翻譯]
-    B --> C[語音克隆 XTTS-v2]
-    C --> D[嘴形同步 Wav2Lip]
-    D --> E{啟用投影片翻譯?}
-    E -->|是| F[智能投影片檢測]
-    F --> G[OCR 文字識別]
-    G --> H[文字翻譯與重繪]
-    H --> I[視頻合成]
-    E -->|否| I
-    I --> J[輸出最終視頻]
+    A[輸入影片] --> B[智能內容分析]
+    B --> C[場景變化檢測]
+    C --> D[人臉/簡報識別]
+    D --> E[智能分段]
+    E --> F[提取音視頻段落]
+    
+    F --> G[人臉段落處理]
+    F --> H[簡報段落處理]
+    
+    G --> G1[語音識別與翻譯]
+    G1 --> G2[語音克隆 XTTS-v2]
+    G2 --> G3[嘴形同步 Wav2Lip]
+    
+    H --> H1[語音識別與翻譯]
+    H1 --> H2[語音克隆 XTTS-v2]
+    H2 --> H3{啟用OCR翻譯?}
+    H3 -->|是| H4[OCR文字識別]
+    H4 --> H5[文字翻譯與重繪]
+    H5 --> H6[逐幀翻譯合成]
+    H3 -->|否| H6
+    
+    G3 --> I[解析度統一處理]
+    H6 --> I
+    I --> J[多重合併策略]
+    J --> K[輸出最終視頻]
 ```
 
 ## 📁 專案結構
@@ -308,12 +521,84 @@ Deep-Video-Translation/
 │   ├── NotoSansCJKjp-Regular.otf # 日文字體
 │   └── NotoSansTC-Regular.ttf    # 中文字體
 ├── temp/                         # 臨時文件目錄
+│   ├── faceai/                   # 人臉段落處理目錄
+│   ├── pptai/                    # 簡報段落處理目錄
+│   ├── audio_segments/           # 音頻片段目錄
+│   ├── slides_output/            # 提取的投影片目錄
+│   ├── translated_slides/        # 翻譯後的投影片目錄
+│   └── segments/                 # 其他分段文件
 ├── requirements.txt              # Python 依賴
 └── README.md                     # 說明文件
 ```
 
+## 🔬 技術創新與原理
+
+### 核心技術創新
+
+#### 1. **智能分段算法**
+結合多種計算機視覺技術實現影片內容的智能識別：
+- **ImageHash**: 使用感知哈希檢測場景變化
+- **Haar Cascade**: 人臉檢測確定講話片段
+- **Canny邊緣檢測**: 分析邊緣密度判斷簡報內容
+- **時間連續性**: 最小段落長度避免過度分段
+
+#### 2. **解析度統一技術**
+解決不同AI模型輸出解析度不一致的問題：
+- **智能縮放**: `force_original_aspect_ratio=decrease` 保持原始比例
+- **居中填充**: 自動計算填充位置保持視覺效果
+- **音頻格式統一**: 統一採樣率和聲道確保兼容性
+
+#### 3. **多重容錯機制**
+四層合併策略確保處理成功率：
+1. **Filter Complex**: 最高效率的一次性處理
+2. **預處理統一**: 最佳兼容性的分步處理
+3. **逐個合併**: 最高穩定性的遞歸處理
+4. **備用方案**: 絕對不會失敗的保險機制
+
+#### 4. **逐幀OCR翻譯**
+實現連續視頻的文字翻譯：
+- **場景變化檢測**: 只在必要時進行OCR處理
+- **翻譯緩存**: 避免重複處理相同內容
+- **文字修復**: 使用inpainting技術移除原文
+- **字體適配**: 多語言字體自動選擇
+
+### 技術難點突破
+
+#### 問題1：不同模型輸出格式不統一
+**解決方案**: 實現了自適應解析度統一系統
+```python
+# 智能縮放保持比例
+scale=1280:720:force_original_aspect_ratio=decrease
+
+# 居中填充到統一尺寸
+pad=1280:720:(ow-iw)/2:(oh-ih)/2
+```
+
+#### 問題2：視頻合併兼容性差
+**解決方案**: 四重合併策略確保成功
+- 先嘗試高效方法，失敗後自動降級
+- 每種方法針對不同場景優化
+- 最後的直接複製確保絕不失敗
+
+#### 問題3：OCR翻譯效果不連續
+**解決方案**: 基於場景檢測的智能翻譯
+- 場景不變時重複使用翻譯結果
+- 場景變化時重新進行OCR處理
+- 逐幀輸出確保視頻連續性
+
+### 性能優化策略
+
+- **並行處理**: 人臉和簡報段落可並行處理
+- **智能採樣**: 不是每幀都進行檢測，提高效率
+- **內存管理**: 及時清理臨時文件避免空間不足
+- **容錯設計**: 單個段落失敗不影響整體處理
+
 ## 未來目標
-加上 RAG
+- 加上 RAG (檢索增強生成)
+- 支援更多視頻格式
+- 實現批量處理功能
+- 添加Web界面
+- 優化處理速度
 
 ## 📄 授權條款
 
