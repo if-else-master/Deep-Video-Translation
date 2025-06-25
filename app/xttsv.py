@@ -7,13 +7,111 @@ import os
 import subprocess
 import re
 
-def extract_audio_from_video(video_path, output_audio_path):
-    """從視頻文件中提取音頻"""
+def check_audio_stream(video_path):
+    """檢查視頻是否包含音頻流"""
     try:
-        command = f'ffmpeg -y -i "{video_path}" -ar 16000 -ac 1 "{output_audio_path}"'
-        subprocess.run(command, shell=True, check=True, capture_output=True)
-        return output_audio_path
+        command = f'ffprobe -v quiet -print_format json -show_streams "{video_path}"'
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            import json
+            data = json.loads(result.stdout)
+            streams = data.get('streams', [])
+            
+            # 檢查是否有音頻流
+            audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
+            return len(audio_streams) > 0
+        else:
+            print(f"⚠️ 無法檢查音頻流: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"⚠️ 檢查音頻流時發生錯誤: {e}")
+        return False
+
+def create_silent_audio(duration_seconds, output_audio_path):
+    """創建指定長度的靜音音頻文件"""
+    try:
+        # 確保輸出目錄存在
+        output_dir = os.path.dirname(output_audio_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"📁 創建音頻輸出目錄: {output_dir}")
+        
+        command = f'ffmpeg -y -f lavfi -i anullsrc=r=16000:cl=mono -t {duration_seconds} -ar 16000 -ac 1 "{output_audio_path}"'
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        
+        if os.path.exists(output_audio_path):
+            print(f"✅ 靜音音頻創建成功: {output_audio_path} ({duration_seconds}秒)")
+            return output_audio_path
+        else:
+            raise Exception(f"靜音音頻創建後文件不存在: {output_audio_path}")
+            
     except subprocess.CalledProcessError as e:
+        print(f"❌ 靜音音頻創建失敗: {e}")
+        print(f"❌ FFmpeg stderr: {e.stderr}")
+        raise Exception(f"靜音音頻創建失敗: {e}")
+    except Exception as e:
+        print(f"❌ 靜音音頻創建過程發生錯誤: {e}")
+        raise Exception(f"靜音音頻創建失敗: {e}")
+
+def get_video_duration(video_path):
+    """獲取視頻時長（秒）"""
+    try:
+        command = f'ffprobe -v quiet -print_format json -show_format "{video_path}"'
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            import json
+            data = json.loads(result.stdout)
+            duration = float(data.get('format', {}).get('duration', 0))
+            return duration
+        else:
+            print(f"⚠️ 無法獲取視頻時長: {result.stderr}")
+            return 5.0  # 預設5秒
+    except Exception as e:
+        print(f"⚠️ 獲取視頻時長時發生錯誤: {e}")
+        return 5.0  # 預設5秒
+
+def extract_audio_from_video(video_path, output_audio_path):
+    """從視頻文件中提取音頻，如果沒有音頻流則創建靜音音頻"""
+    try:
+        # 確保輸出目錄存在
+        output_dir = os.path.dirname(output_audio_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"📁 創建音頻輸出目錄: {output_dir}")
+        
+        # 先檢查視頻是否包含音頻流
+        has_audio = check_audio_stream(video_path)
+        
+        if has_audio:
+            # 有音頻流，正常提取
+            print(f"🎵 檢測到音頻流，正在提取...")
+            command = f'ffmpeg -y -i "{video_path}" -ar 16000 -ac 1 "{output_audio_path}"'
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+            
+            if os.path.exists(output_audio_path):
+                print(f"✅ 音頻提取成功: {output_audio_path}")
+                return output_audio_path
+            else:
+                raise Exception(f"音頻提取後文件不存在: {output_audio_path}")
+        else:
+            # 沒有音頻流，創建靜音音頻
+            print(f"⚠️ 視頻沒有音頻流，創建靜音音頻...")
+            duration = get_video_duration(video_path)
+            return create_silent_audio(duration, output_audio_path)
+            
+    except subprocess.CalledProcessError as e:
+        # 如果提取失敗，嘗試創建靜音音頻
+        print(f"❌ 音頻提取失敗，嘗試創建靜音音頻: {e}")
+        try:
+            duration = get_video_duration(video_path)
+            return create_silent_audio(duration, output_audio_path)
+        except Exception as e2:
+            print(f"❌ 靜音音頻創建也失敗: {e2}")
+            raise Exception(f"音頻處理完全失敗: 原始錯誤={e}, 靜音創建錯誤={e2}")
+    except Exception as e:
+        print(f"❌ 音頻提取過程發生錯誤: {e}")
         raise Exception(f"音頻提取失敗: {e}")
 
 def split_text(text, max_length=80):
@@ -73,6 +171,12 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
     device = torch.device("cpu")
     model.to(device)
 
+    # 確保輸出目錄存在
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"📁 創建語音克隆輸出目錄: {output_dir}")
+
     # 處理輸入音檔格式
     file_ext = os.path.splitext(speaker_audio_path)[1].lower()
     
@@ -88,10 +192,12 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
         os.makedirs("temp", exist_ok=True)
         try:
             command = f'ffmpeg -y -i "{speaker_audio_path}" -ar 16000 -ac 1 "{temp_audio_path}"'
-            subprocess.run(command, shell=True, check=True, capture_output=True)
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
             speaker_wav = temp_audio_path
             print(f"已轉換音頻格式: {speaker_wav}")
         except subprocess.CalledProcessError as e:
+            print(f"❌ 音頻轉換失敗: {e}")
+            print(f"❌ FFmpeg stderr: {e.stderr}")
             raise Exception(f"音頻轉換失敗: {e}")
     else:
         # 如果已經是 WAV 格式，直接使用

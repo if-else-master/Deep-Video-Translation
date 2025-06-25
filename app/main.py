@@ -25,11 +25,14 @@ import subprocess
 class DeepVideoTranslationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Deep Video Translation with Slide Translation")
+        self.root.title("Deep Video Translation with Smart Segmentation")
         self.root.geometry("1000x800")
         
         # 設置字體路徑
         self.setup_fonts()
+        
+        # 確保基本目錄存在
+        self.ensure_basic_directories()
         
         # 創建主框架
         main_frame = ttk.Frame(root, padding="10")
@@ -40,8 +43,8 @@ class DeepVideoTranslationApp:
         self.api_key_var = tk.StringVar()
         ttk.Entry(main_frame, textvariable=self.api_key_var, width=50).grid(row=0, column=1, columnspan=2, sticky=tk.W, pady=5)
         
-        # 輸入音檔選擇
-        ttk.Label(main_frame, text="輸入音檔:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        # 輸入影片選擇
+        ttk.Label(main_frame, text="輸入影片:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.input_path_var = tk.StringVar()
         ttk.Entry(main_frame, textvariable=self.input_path_var, width=50).grid(row=1, column=1, sticky=tk.W, pady=5)
         ttk.Button(main_frame, text="瀏覽", command=self.browse_input).grid(row=1, column=2, padx=5)
@@ -53,14 +56,13 @@ class DeepVideoTranslationApp:
         language_combo.grid(row=2, column=1, sticky=tk.W, pady=5)
         
         # 投影片翻譯選項
-        self.slide_translation_var = tk.BooleanVar()
+        self.slide_translation_var = tk.BooleanVar(value=True)
         slide_check = tk.Checkbutton(main_frame, text="啟用投影片文字翻譯", variable=self.slide_translation_var, command=self.toggle_slide_options)
         slide_check.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
         
         # 投影片翻譯參數框架
         self.slide_frame = ttk.LabelFrame(main_frame, text="投影片翻譯設定", padding="5")
         self.slide_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
-        self.slide_frame.grid_remove()  # 初始隱藏
         
         # 投影片翻譯語言
         ttk.Label(self.slide_frame, text="投影片翻譯語言:").grid(row=0, column=0, sticky=tk.W, padx=5)
@@ -69,39 +71,33 @@ class DeepVideoTranslationApp:
                                        values=["Japanese", "English", "Chinese"], width=20)
         slide_lang_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
         
-        # 幀間隔設定
-        ttk.Label(self.slide_frame, text="幀間隔:").grid(row=0, column=2, sticky=tk.W, padx=5)
-        self.frame_interval_var = tk.StringVar(value="15")
-        ttk.Entry(self.slide_frame, textvariable=self.frame_interval_var, width=10).grid(row=0, column=3, padx=5)
+        # 分段參數設定
+        ttk.Label(self.slide_frame, text="最小段落長度(秒):").grid(row=0, column=2, sticky=tk.W, padx=5)
+        self.min_segment_duration_var = tk.StringVar(value="2")
+        ttk.Entry(self.slide_frame, textvariable=self.min_segment_duration_var, width=10).grid(row=0, column=3, padx=5)
         
         # Hash 差異門檻
-        ttk.Label(self.slide_frame, text="差異門檻:").grid(row=1, column=0, sticky=tk.W, padx=5)
+        ttk.Label(self.slide_frame, text="場景切換門檻:").grid(row=1, column=0, sticky=tk.W, padx=5)
         self.hash_threshold_var = tk.StringVar(value="5")
         ttk.Entry(self.slide_frame, textvariable=self.hash_threshold_var, width=10).grid(row=1, column=1, padx=5)
         
-        # 嘴形目標選擇
-        ttk.Label(main_frame, text="嘴形目標視頻:").grid(row=5, column=0, sticky=tk.W, pady=5)
-        self.face_path_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.face_path_var, width=50).grid(row=5, column=1, sticky=tk.W, pady=5)
-        ttk.Button(main_frame, text="瀏覽", command=self.browse_face).grid(row=5, column=2, padx=5)
-        
         # 輸出文件選擇
-        ttk.Label(main_frame, text="輸出文件:").grid(row=6, column=0, sticky=tk.W, pady=5)
+        ttk.Label(main_frame, text="輸出文件:").grid(row=5, column=0, sticky=tk.W, pady=5)
         self.output_path_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.output_path_var, width=50).grid(row=6, column=1, sticky=tk.W, pady=5)
-        ttk.Button(main_frame, text="瀏覽", command=self.browse_output).grid(row=6, column=2, padx=5)
+        ttk.Entry(main_frame, textvariable=self.output_path_var, width=50).grid(row=5, column=1, sticky=tk.W, pady=5)
+        ttk.Button(main_frame, text="瀏覽", command=self.browse_output).grid(row=5, column=2, padx=5)
         
         # 進度條
         self.progress = ttk.Progressbar(main_frame, length=300, mode='determinate')
-        self.progress.grid(row=7, column=0, columnspan=3, pady=20)
+        self.progress.grid(row=6, column=0, columnspan=3, pady=20)
         
         # 開始按鈕
-        ttk.Button(main_frame, text="開始處理", command=self.process).grid(row=8, column=0, columnspan=3, pady=10)
+        ttk.Button(main_frame, text="開始智能分段處理", command=self.process).grid(row=7, column=0, columnspan=3, pady=10)
         
         # 狀態標籤
         self.status_var = tk.StringVar()
         self.status_var.set("準備就緒")
-        ttk.Label(main_frame, textvariable=self.status_var).grid(row=9, column=0, columnspan=3, pady=5)
+        ttk.Label(main_frame, textvariable=self.status_var).grid(row=8, column=0, columnspan=3, pady=5)
 
     def setup_fonts(self):
         """設置字體路徑，使用本地的 Noto 字體"""
@@ -194,20 +190,13 @@ class DeepVideoTranslationApp:
 
     def browse_input(self):
         filename = filedialog.askopenfilename(
-            filetypes=[("Audio/Video files", "*.mp4 *.wav *.mp3 *.m4a")]
+            filetypes=[("Video files", "*.mp4")]
         )
         if filename:
             self.input_path_var.set(filename)
             # 自動設置輸出路徑
             base_name = os.path.splitext(filename)[0]
             self.output_path_var.set(f"{base_name}_translated.mp4")
-
-    def browse_face(self):
-        filename = filedialog.askopenfilename(
-            filetypes=[("Video files", "*.mp4")]
-        )
-        if filename:
-            self.face_path_var.set(filename)
 
     def browse_output(self):
         filename = filedialog.asksaveasfilename(
@@ -675,12 +664,839 @@ class DeepVideoTranslationApp:
         
         return estimated_face_count, estimated_slide_count, total_frames
 
+    def analyze_and_segment_video(self, video_path):
+        """分析影片並智能分段，分離人臉和簡報片段"""
+        print("🔍 開始分析影片內容並進行智能分段...")
+        
+        # 創建輸出目錄
+        face_dir = "temp/faceai"
+        ppt_dir = "temp/pptai"
+        os.makedirs(face_dir, exist_ok=True)
+        os.makedirs(ppt_dir, exist_ok=True)
+        
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        min_duration = float(self.min_segment_duration_var.get())
+        min_frames = int(fps * min_duration)
+        hash_threshold = int(self.hash_threshold_var.get())
+        
+        # 第一步：分析整個影片的內容類型
+        print("📊 正在分析影片內容類型...")
+        segments = []
+        current_segment = None
+        frame_count = 0
+        prev_hash = None
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # 檢測內容類型
+            has_faces = self.detect_faces_in_frame(frame)
+            is_slide = self.is_slide_frame(frame)
+            
+            # 決定段落類型
+            if has_faces:
+                segment_type = "face"
+            elif is_slide:
+                segment_type = "slide"
+            else:
+                segment_type = "unknown"
+            
+            # 檢查是否需要開始新段落
+            if current_segment is None:
+                current_segment = {
+                    'type': segment_type,
+                    'start_frame': frame_count,
+                    'end_frame': frame_count,
+                    'frames': [frame_count]
+                }
+            elif current_segment['type'] != segment_type or self.should_split_segment(frame, prev_hash, hash_threshold):
+                # 結束當前段落（如果足夠長）
+                if len(current_segment['frames']) >= min_frames:
+                    current_segment['end_frame'] = frame_count - 1
+                    segments.append(current_segment)
+                
+                # 開始新段落
+                current_segment = {
+                    'type': segment_type,
+                    'start_frame': frame_count,
+                    'end_frame': frame_count,
+                    'frames': [frame_count]
+                }
+            else:
+                # 繼續當前段落
+                current_segment['end_frame'] = frame_count
+                current_segment['frames'].append(frame_count)
+            
+            # 儲存當前幀的hash用於場景切換檢測
+            if frame_count % 5 == 0:  # 每5幀檢查一次
+                pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                prev_hash = imagehash.phash(pil_image)
+            
+            frame_count += 1
+            
+            # 更新進度
+            if frame_count % 100 == 0:
+                progress = int((frame_count / total_frames) * 20)  # 分析階段占20%進度
+                self.progress['value'] = progress
+                self.root.update()
+        
+        # 添加最後一個段落
+        if current_segment and len(current_segment['frames']) >= min_frames:
+            segments.append(current_segment)
+        
+        cap.release()
+        
+        print(f"📋 分析完成，找到 {len(segments)} 個段落:")
+        face_segments = [s for s in segments if s['type'] == 'face']
+        slide_segments = [s for s in segments if s['type'] == 'slide']
+        print(f"   👤 人臉段落: {len(face_segments)}")
+        print(f"   📊 簡報段落: {len(slide_segments)}")
+        
+        # 第二步：提取並儲存段落
+        self.extract_segments(video_path, segments, face_dir, ppt_dir)
+        
+        return segments
+
+    def should_split_segment(self, current_frame, prev_hash, threshold):
+        """判斷是否應該分割段落（基於場景變化）"""
+        if prev_hash is None:
+            return False
+            
+        pil_image = Image.fromarray(cv2.cvtColor(current_frame, cv2.COLOR_BGR2RGB))
+        current_hash = imagehash.phash(pil_image)
+        
+        return abs(current_hash - prev_hash) > threshold
+
+    def extract_video_segment(self, cap, start_frame, end_frame, output_path, fps, width, height, original_video_path):
+        """提取單個影片段落，包含音頻和視頻"""
+        # 確保輸出目錄存在
+        output_dir = os.path.dirname(output_path)
+        self.ensure_directory_exists(output_dir)
+        
+        # 計算時間戳
+        start_time = start_frame / fps
+        duration = (end_frame - start_frame + 1) / fps
+        
+        print(f"  📹 提取段落: {start_time:.2f}s - {start_time + duration:.2f}s (時長: {duration:.2f}s)")
+        
+        try:
+            # 使用 FFmpeg 直接提取包含音頻的視頻段落
+            command = f'ffmpeg -y -i "{original_video_path}" -ss {start_time} -t {duration} -c:v libx264 -c:a aac "{output_path}"'
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print(f"  ✅ 段落提取成功: {output_path}")
+            else:
+                print(f"  ⚠️ FFmpeg 提取失敗，使用備用方法: {result.stderr}")
+                # 備用方法：只提取視頻，然後添加靜音音頻
+                self.extract_video_only_segment(cap, start_frame, end_frame, output_path, fps, width, height, duration)
+                
+        except Exception as e:
+            print(f"  ❌ 段落提取失敗: {e}")
+            # 備用方法
+            self.extract_video_only_segment(cap, start_frame, end_frame, output_path, fps, width, height, duration)
+
+    def extract_video_only_segment(self, cap, start_frame, end_frame, output_path, fps, width, height, duration):
+        """備用方法：只提取視頻然後添加靜音音頻"""
+        temp_video_path = output_path.replace('.mp4', '_temp_video.mp4')
+        
+        # 提取視頻部分
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
+        
+        # 定位到開始幀
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        
+        for frame_num in range(start_frame, end_frame + 1):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            out.write(frame)
+        
+        out.release()
+        
+        # 創建靜音音頻並合成
+        try:
+            from xttsv import create_silent_audio
+            temp_audio_path = output_path.replace('.mp4', '_temp_audio.wav')
+            create_silent_audio(duration, temp_audio_path)
+            
+            # 合成視頻和音頻
+            command = f'ffmpeg -y -i "{temp_video_path}" -i "{temp_audio_path}" -c:v copy -c:a aac "{output_path}"'
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                # 清理臨時文件
+                os.remove(temp_video_path)
+                os.remove(temp_audio_path)
+            else:
+                # 如果合成失敗，至少保留視頻
+                import shutil
+                shutil.move(temp_video_path, output_path)
+                if os.path.exists(temp_audio_path):
+                    os.remove(temp_audio_path)
+                    
+        except Exception as e:
+            print(f"  ⚠️ 音頻合成失敗，僅保留視頻: {e}")
+            import shutil
+            shutil.move(temp_video_path, output_path)
+
+    def extract_segments(self, video_path, segments, face_dir, ppt_dir):
+        """提取並儲存影片段落，每個段落包含完整的音視頻"""
+        print("✂️ 正在提取影片段落...")
+        
+        # 獲取視頻信息
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        face_count = 1
+        slide_count = 1
+        
+        for i, segment in enumerate(segments):
+            segment_type = segment['type']
+            start_frame = segment['start_frame']
+            end_frame = segment['end_frame']
+            
+            if segment_type == 'face':
+                filename = f"{face_count:02d}.mp4"
+                output_path = os.path.join(face_dir, filename)
+                face_count += 1
+            elif segment_type == 'slide':
+                filename = f"{slide_count:02d}.mp4"
+                output_path = os.path.join(ppt_dir, filename)
+                slide_count += 1
+            else:
+                continue  # 跳過未知類型
+            
+            # 提取段落（包含音視頻）
+            self.extract_video_segment(cap, start_frame, end_frame, output_path, fps, width, height, video_path)
+            
+            print(f"💾 已提取 {segment_type} 段落: {filename} (幀 {start_frame}-{end_frame})")
+            
+            # 更新進度
+            progress = 20 + int((i / len(segments)) * 20)  # 提取階段占20-40%進度
+            self.progress['value'] = progress
+            self.root.update()
+        
+        cap.release()
+        print(f"✅ 段落提取完成: {face_count-1} 個人臉段落, {slide_count-1} 個簡報段落")
+
+    def process_face_segments(self, face_dir, language):
+        """處理人臉段落：音頻提取、翻譯、嘴形同步"""
+        print("👤 開始處理人臉段落...")
+        
+        # 確保目錄存在
+        self.ensure_directory_exists(face_dir)
+        
+        face_files = sorted([f for f in os.listdir(face_dir) if f.endswith('.mp4')])
+        processed_segments = []
+        
+        for i, filename in enumerate(face_files):
+            print(f"🎭 處理人臉段落 {filename}...")
+            
+            input_path = os.path.join(face_dir, filename)
+            base_name = os.path.splitext(filename)[0]
+            
+            try:
+                # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
+                print(f"  🎵 正在處理音頻...")
+                api_key = self.api_key_var.get()
+                
+                try:
+                    translated_text = voice(input_path, api_key, language)
+                except Exception as audio_error:
+                    print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
+                    translated_text = ""
+                
+                if not translated_text or translated_text.strip() == "":
+                    print(f"  ⚠️ 段落 {filename} 沒有檢測到語音或翻譯失敗，跳過語音處理")
+                    # 直接複製原始影片
+                    processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
+                    import shutil
+                    shutil.copy(input_path, processed_path)
+                    processed_segments.append(processed_path)
+                    continue
+                
+                print(f"  📝 翻譯結果: {translated_text}")
+                
+                # 2. 語音克隆（使用段落文件作為參考音頻）
+                print(f"  🔊 正在進行語音克隆...")
+                temp_audio_dir = os.path.dirname(os.path.join(face_dir, f"{base_name}_audio.wav"))
+                self.ensure_directory_exists(temp_audio_dir)
+                temp_audio = os.path.join(face_dir, f"{base_name}_audio.wav")
+                
+                try:
+                    # 使用段落文件本身作為參考音頻進行語音克隆
+                    audio_path = xttsv(translated_text, input_path, temp_audio, language)
+                except Exception as tts_error:
+                    print(f"  ⚠️ 語音克隆失敗: {tts_error}")
+                    # 如果語音克隆失敗，直接複製原始影片
+                    processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
+                    import shutil
+                    shutil.copy(input_path, processed_path)
+                    processed_segments.append(processed_path)
+                    continue
+                
+                # 3. 嘴形同步
+                print(f"  👄 正在進行嘴形同步...")
+                processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
+                processed_dir = os.path.dirname(processed_path)
+                self.ensure_directory_exists(processed_dir)
+                
+                # 確保 temp 目錄存在給 Wav2Lip 使用
+                self.ensure_directory_exists("temp")
+                
+                try:
+                    run_inference(input_path, audio_path, processed_path)
+                    print(f"  ✅ 人臉段落 {filename} 處理完成")
+                except Exception as lipsync_error:
+                    print(f"  ⚠️ 嘴形同步失敗: {lipsync_error}")
+                    # 如果嘴形同步失敗，嘗試直接合成音頻和視頻
+                    try:
+                        command = f'ffmpeg -y -i "{input_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{processed_path}"'
+                        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                        if result.returncode == 0:
+                            print(f"  ✅ 使用音頻合成完成 {filename}")
+                        else:
+                            print(f"  ⚠️ 音頻合成失敗，使用原始影片: {result.stderr}")
+                            import shutil
+                            shutil.copy(input_path, processed_path)
+                    except Exception as merge_error:
+                        print(f"  ⚠️ 音頻合成也失敗: {merge_error}")
+                        import shutil
+                        shutil.copy(input_path, processed_path)
+                
+                processed_segments.append(processed_path)
+                
+            except Exception as e:
+                print(f"  ❌ 處理人臉段落 {filename} 時發生未預期錯誤: {e}")
+                # 如果處理失敗，使用原始影片
+                processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
+                import shutil
+                shutil.copy(input_path, processed_path)
+                processed_segments.append(processed_path)
+            
+            # 更新進度
+            progress = 40 + int((i / len(face_files)) * 30)  # 人臉處理階段占40-70%進度
+            self.progress['value'] = progress
+            self.root.update()
+        
+        return processed_segments
+
+    def process_slide_segments(self, ppt_dir, language, slide_language):
+        """處理簡報段落：音頻提取、翻譯、OCR翻譯"""
+        print("📊 開始處理簡報段落...")
+        
+        # 確保目錄存在
+        self.ensure_directory_exists(ppt_dir)
+        
+        ppt_files = sorted([f for f in os.listdir(ppt_dir) if f.endswith('.mp4')])
+        processed_segments = []
+        
+        for i, filename in enumerate(ppt_files):
+            print(f"📋 處理簡報段落 {filename}...")
+            
+            input_path = os.path.join(ppt_dir, filename)
+            base_name = os.path.splitext(filename)[0]
+            
+            try:
+                # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
+                print(f"  🎵 正在處理音頻...")
+                api_key = self.api_key_var.get()
+                
+                try:
+                    translated_text = voice(input_path, api_key, language)
+                except Exception as audio_error:
+                    print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
+                    translated_text = ""
+                
+                # 2. 語音克隆（如果有翻譯文字）
+                temp_audio = None
+                if translated_text and translated_text.strip():
+                    print(f"  📝 翻譯結果: {translated_text}")
+                    print(f"  🔊 正在進行語音克隆...")
+                    temp_audio_dir = os.path.dirname(os.path.join(ppt_dir, f"{base_name}_audio.wav"))
+                    self.ensure_directory_exists(temp_audio_dir)
+                    temp_audio = os.path.join(ppt_dir, f"{base_name}_audio.wav")
+                    
+                    try:
+                        # 使用段落文件本身作為參考音頻進行語音克隆
+                        xttsv(translated_text, input_path, temp_audio, language)
+                    except Exception as tts_error:
+                        print(f"  ⚠️ 語音克隆失敗: {tts_error}")
+                        temp_audio = None
+                else:
+                    print(f"  ⚠️ 段落 {filename} 沒有檢測到語音或翻譯失敗")
+                
+                # 3. 投影片OCR翻譯
+                print(f"  📖 正在進行投影片OCR翻譯...")
+                processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
+                processed_dir = os.path.dirname(processed_path)
+                self.ensure_directory_exists(processed_dir)
+                
+                self.process_slide_video(input_path, processed_path, slide_language, temp_audio)
+                
+                processed_segments.append(processed_path)
+                print(f"  ✅ 簡報段落 {filename} 處理完成")
+                
+            except Exception as e:
+                print(f"  ❌ 處理簡報段落 {filename} 時發生錯誤: {e}")
+                # 如果處理失敗，使用原始影片
+                processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
+                import shutil
+                shutil.copy(input_path, processed_path)
+                processed_segments.append(processed_path)
+            
+            # 更新進度
+            progress = 70 + int((i / len(ppt_files)) * 20)  # 簡報處理階段占70-90%進度
+            self.progress['value'] = progress
+            self.root.update()
+        
+        return processed_segments
+
+    def process_slide_video(self, input_video, output_video, target_lang, audio_path=None):
+        """處理簡報影片，進行OCR翻譯"""
+        print(f"  📖 開始處理簡報視頻: {input_video}")
+        
+        # 確保輸出目錄存在
+        output_dir = os.path.dirname(output_video)
+        self.ensure_directory_exists(output_dir)
+        
+        cap = cv2.VideoCapture(input_video)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        print(f"  📊 視頻信息: {width}x{height}, {fps}fps, 共{total_frames}幀")
+        
+        # 創建臨時視頻輸出
+        temp_video_path = output_video.replace('.mp4', '_temp.mp4')
+        temp_dir = os.path.dirname(temp_video_path)
+        self.ensure_directory_exists(temp_dir)
+        
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
+        
+        frame_count = 0
+        prev_hash = None
+        current_translated_frame = None
+        hash_threshold = int(self.hash_threshold_var.get())
+        translated_frame_count = 0
+        
+        print(f"  🔍 開始逐幀處理OCR翻譯...")
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # 每10幀檢查一次是否需要重新翻譯（更頻繁檢查）
+            if frame_count % 10 == 0:
+                pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                curr_hash = imagehash.phash(pil_image)
+                
+                if prev_hash is None or abs(curr_hash - prev_hash) > hash_threshold:
+                    # 場景改變或首次處理，進行OCR翻譯
+                    print(f"    🔄 幀 {frame_count}: 檢測到場景變化，進行OCR翻譯...")
+                    new_translated_frame = self.translate_frame_text(frame, target_lang)
+                    
+                    # 檢查翻譯是否成功
+                    if new_translated_frame is not None:
+                        current_translated_frame = new_translated_frame
+                        translated_frame_count += 1
+                        print(f"    ✅ 幀 {frame_count}: OCR翻譯成功")
+                    else:
+                        print(f"    ⚠️ 幀 {frame_count}: OCR翻譯失敗，使用原始幀")
+                        current_translated_frame = frame
+                    
+                    prev_hash = curr_hash
+                elif current_translated_frame is None:
+                    # 如果還沒有翻譯幀，至少嘗試一次翻譯
+                    print(f"    🔍 幀 {frame_count}: 首次嘗試OCR翻譯...")
+                    current_translated_frame = self.translate_frame_text(frame, target_lang)
+                    if current_translated_frame is not None:
+                        translated_frame_count += 1
+                        print(f"    ✅ 幀 {frame_count}: 首次OCR翻譯成功")
+                    else:
+                        current_translated_frame = frame
+                        print(f"    ⚠️ 幀 {frame_count}: 首次OCR翻譯失敗，使用原始幀")
+            
+            # 確保有可用的幀來輸出
+            output_frame = current_translated_frame if current_translated_frame is not None else frame
+            out.write(output_frame)
+            
+            frame_count += 1
+            
+            # 每100幀報告一次進度
+            if frame_count % 100 == 0:
+                print(f"    📊 已處理 {frame_count}/{total_frames} 幀 (已翻譯場景: {translated_frame_count})")
+        
+        cap.release()
+        out.release()
+        
+        print(f"  ✅ 視頻處理完成: 共{frame_count}幀，翻譯場景{translated_frame_count}個")
+        print(f"  💾 臨時視頻已保存: {temp_video_path}")
+        
+        # 如果有音頻，合成音頻和視頻
+        if audio_path and os.path.exists(audio_path):
+            try:
+                print(f"  🔊 開始合成音頻: {audio_path}")
+                command = f'ffmpeg -y -i "{temp_video_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{output_video}"'
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                if result.returncode == 0:
+                    os.remove(temp_video_path)
+                    print(f"  ✅ 音頻視頻合成成功: {output_video}")
+                else:
+                    print(f"  ⚠️ 音頻合成失敗，使用純視頻版本: {result.stderr}")
+                    os.rename(temp_video_path, output_video)
+            except Exception as e:
+                print(f"  ⚠️ 音頻合成異常，使用純視頻版本: {e}")
+                os.rename(temp_video_path, output_video)
+        else:
+            # 沒有音頻，直接使用視頻
+            print(f"  📹 沒有音頻文件，使用純視頻版本")
+            os.rename(temp_video_path, output_video)
+        
+        print(f"  🎯 簡報視頻處理完成: {output_video}")
+
+    def translate_frame_text(self, frame, target_lang):
+        """翻譯單個幀中的文字"""
+        try:
+            print(f"      🔍 開始OCR識別...")
+            # OCR識別
+            reader = easyocr.Reader(['ch_tra'], gpu=False)
+            results = reader.readtext(frame)
+            
+            boxes, orig_texts = [], []
+            for box, text, conf in results:
+                if conf > 0.4:  # 置信度門檻
+                    boxes.append(box)
+                    orig_texts.append(text)
+                    print(f"      📝 檢測到文字: '{text}' (置信度: {conf:.2f})")
+            
+            if not orig_texts:
+                print(f"      ⚠️ 未檢測到文字內容，返回原始幀")
+                return frame
+            
+            print(f"      🔍 找到 {len(orig_texts)} 個文字區塊，開始翻譯...")
+            
+            # 移除原文
+            img_clean = self.remove_text_with_inpainting(frame, boxes)
+            print(f"      🧹 原文移除完成")
+            
+            # 翻譯文字
+            translated = []
+            for i, text in enumerate(orig_texts):
+                translated_text = self.translate_with_gemini(text, target_lang)
+                translated.append(translated_text)
+                print(f"      📝 翻譯 {i+1}: '{text}' -> '{translated_text}'")
+            
+            # 添加翻譯文字
+            pil_img = Image.fromarray(cv2.cvtColor(img_clean, cv2.COLOR_BGR2RGB))
+            font_path = self.font_paths.get(target_lang, self.font_paths["English"])
+            print(f"      🎨 使用字體: {font_path}")
+            
+            final = self.draw_translated_text(pil_img, boxes, translated, font_path)
+            result_frame = cv2.cvtColor(np.array(final), cv2.COLOR_RGB2BGR)
+            
+            print(f"      ✅ 文字翻譯完成，返回翻譯後的幀")
+            return result_frame
+            
+        except Exception as e:
+            print(f"      ❌ 幀文字翻譯失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            print(f"      🔄 返回原始幀作為備用")
+            return frame
+
+    def auto_edit_segments(self, face_segments, slide_segments, segments_info, output_path):
+        """根據原始順序自動剪接所有段落"""
+        print("🎬 開始自動剪接段落...")
+        print(f"  👤 人臉段落數量: {len(face_segments)}")
+        print(f"  📊 簡報段落數量: {len(slide_segments)}")
+        print(f"  📋 段落信息數量: {len(segments_info)}")
+        
+        # 確保輸出目錄存在
+        output_dir = os.path.dirname(output_path)
+        self.ensure_directory_exists(output_dir)
+        
+        # 創建段落映射並檢查文件存在性
+        face_map = {}
+        slide_map = {}
+        
+        face_idx = 1
+        slide_idx = 1
+        
+        print("  📁 檢查人臉段落文件:")
+        for segment_path in face_segments:
+            if os.path.exists(segment_path):
+                face_map[face_idx] = segment_path
+                print(f"    ✅ 人臉段落 {face_idx}: {segment_path}")
+            else:
+                print(f"    ❌ 人臉段落 {face_idx} 文件不存在: {segment_path}")
+            face_idx += 1
+            
+        print("  📁 檢查簡報段落文件:")
+        for segment_path in slide_segments:
+            if os.path.exists(segment_path):
+                slide_map[slide_idx] = segment_path
+                print(f"    ✅ 簡報段落 {slide_idx}: {segment_path}")
+            else:
+                print(f"    ❌ 簡報段落 {slide_idx} 文件不存在: {segment_path}")
+            slide_idx += 1
+        
+        # 按原始順序排列段落
+        ordered_segments = []
+        face_counter = 1
+        slide_counter = 1
+        
+        print("  🔄 按原始順序排列段落:")
+        for i, segment in enumerate(segments_info):
+            segment_type = segment['type']
+            if segment_type == 'face' and face_counter in face_map:
+                segment_path = face_map[face_counter]
+                ordered_segments.append(segment_path)
+                print(f"    {i+1}. 人臉段落 {face_counter}: {os.path.basename(segment_path)}")
+                face_counter += 1
+            elif segment_type == 'slide' and slide_counter in slide_map:
+                segment_path = slide_map[slide_counter]
+                ordered_segments.append(segment_path)
+                print(f"    {i+1}. 簡報段落 {slide_counter}: {os.path.basename(segment_path)}")
+                slide_counter += 1
+            else:
+                print(f"    {i+1}. ⚠️ 跳過段落: {segment_type} (無對應文件)")
+        
+        if not ordered_segments:
+            raise ValueError("沒有找到可以剪接的段落")
+        
+        print(f"  📝 最終剪接列表共 {len(ordered_segments)} 個段落")
+        
+        # 創建段落列表文件
+        segment_list_path = "temp/segment_list.txt"
+        self.ensure_directory_exists(os.path.dirname(segment_list_path))
+        
+        print(f"  📄 創建段落列表文件: {segment_list_path}")
+        with open(segment_list_path, 'w', encoding='utf-8') as f:
+            for i, segment_path in enumerate(ordered_segments):
+                # 使用絕對路徑確保 ffmpeg 能找到文件
+                abs_path = os.path.abspath(segment_path)
+                f.write(f"file '{abs_path}'\n")
+                print(f"    {i+1}. {abs_path}")
+        
+        # 使用 ffmpeg 合併段落 - 多種方法嘗試
+        print(f"🔗 正在合併 {len(ordered_segments)} 個段落...")
+        
+        # 方法1：使用解析度統一的filter_complex進行合併
+        try:
+            print("🔧 方法1: 使用 filter_complex 合併 (自動統一解析度)...")
+            if len(ordered_segments) == 1:
+                # 只有一個文件，直接複製
+                print("  📁 只有一個段落，直接複製...")
+                import shutil
+                shutil.copy(ordered_segments[0], output_path)
+                print("✅ 單文件複製完成")
+                return
+            elif len(ordered_segments) == 2:
+                # 兩個文件，統一解析度後合併
+                input_params = ' '.join([f'-i "{seg}"' for seg in ordered_segments])
+                # 統一到1280x720解析度，並確保音頻格式一致
+                command = f'ffmpeg -y {input_params} -filter_complex "[0:v]scale=1280:720,setsar=1:1[v0];[1:v]scale=1280:720,setsar=1:1[v1];[0:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a0];[1:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac "{output_path}"'
+                print(f"  🔧 執行命令: {command}")
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    print("✅ filter_complex 解析度統一合併成功")
+                    self.verify_output_file(output_path)
+                    return
+                else:
+                    print(f"⚠️ filter_complex 解析度統一失敗: {result.stderr}")
+            else:
+                # 多個文件，統一解析度後合併
+                input_params = ' '.join([f'-i "{seg}"' for seg in ordered_segments])
+                
+                # 為每個輸入創建scale和audio format濾鏡
+                video_filters = []
+                audio_filters = []
+                concat_inputs = []
+                
+                for i in range(len(ordered_segments)):
+                    video_filters.append(f"[{i}:v]scale=1280:720,setsar=1:1[v{i}]")
+                    audio_filters.append(f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a{i}]")
+                    concat_inputs.extend([f"[v{i}]", f"[a{i}]"])
+                
+                filter_complex = ';'.join(video_filters + audio_filters) + ';' + ''.join(concat_inputs) + f'concat=n={len(ordered_segments)}:v=1:a=1[outv][outa]'
+                
+                command = f'ffmpeg -y {input_params} -filter_complex "{filter_complex}" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac "{output_path}"'
+                print(f"  🔧 執行命令: {command}")
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    print("✅ filter_complex 多文件解析度統一合併成功")
+                    self.verify_output_file(output_path)
+                    return
+                else:
+                    print(f"⚠️ filter_complex 多文件解析度統一失敗: {result.stderr}")
+        except Exception as e:
+            print(f"⚠️ filter_complex 方法異常: {e}")
+        
+        # 方法2：先統一解析度再使用concat demuxer
+        try:
+            print("🔧 方法2: 統一解析度後使用 concat demuxer...")
+            # 創建統一解析度的臨時文件
+            normalized_segments = []
+            for i, segment in enumerate(ordered_segments):
+                normalized_path = segment.replace('.mp4', f'_normalized_{i}.mp4')
+                command = f'ffmpeg -y -i "{segment}" -vf scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1:1 -af aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono -c:v libx264 -c:a aac "{normalized_path}"'
+                print(f"  📐 統一段落 {i+1} 解析度...")
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    normalized_segments.append(normalized_path)
+                else:
+                    print(f"  ⚠️ 段落 {i+1} 解析度統一失敗: {result.stderr}")
+                    # 清理已創建的臨時文件
+                    for temp_file in normalized_segments:
+                        if os.path.exists(temp_file):
+                            os.remove(temp_file)
+                    raise Exception(f"解析度統一失敗")
+            
+            # 創建新的段落列表文件
+            normalized_list_path = "temp/normalized_segment_list.txt"
+            with open(normalized_list_path, 'w', encoding='utf-8') as f:
+                for seg_path in normalized_segments:
+                    abs_path = os.path.abspath(seg_path)
+                    f.write(f"file '{abs_path}'\n")
+            
+            # 使用concat demuxer合併
+            command = f'ffmpeg -y -f concat -safe 0 -i "{normalized_list_path}" -c copy "{output_path}"'
+            print(f"  🔧 執行合併命令: {command}")
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            # 清理臨時文件
+            for temp_file in normalized_segments:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            if os.path.exists(normalized_list_path):
+                os.remove(normalized_list_path)
+            
+            if result.returncode == 0:
+                print("✅ 統一解析度 concat demuxer 合併成功")
+                self.verify_output_file(output_path)
+                return
+            else:
+                print(f"⚠️ 統一解析度 concat demuxer 失敗: {result.stderr}")
+        except Exception as e:
+            print(f"⚠️ 統一解析度 concat demuxer 方法異常: {e}")
+        
+        # 方法3：直接使用原始concat demuxer (可能失敗但值得嘗試)
+        try:
+            print("🔧 方法3: 直接使用 concat demuxer (可能因解析度不同失敗)...")
+            command = f'ffmpeg -y -f concat -safe 0 -i "{segment_list_path}" -c:v libx264 -c:a aac "{output_path}"'
+            print(f"  🔧 執行命令: {command}")
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print("✅ 直接 concat demuxer 合併成功")
+                self.verify_output_file(output_path)
+                return
+            else:
+                print(f"⚠️ 直接 concat demuxer 失敗（預期中）: {result.stderr}")
+        except Exception as e:
+            print(f"⚠️ 直接 concat demuxer 方法異常: {e}")
+        
+        # 方法4：逐個合併 (兩兩合併)
+        try:
+            print("🔧 方法4: 逐個合併...")
+            self.merge_segments_sequentially(ordered_segments, output_path)
+            print("✅ 逐個合併成功")
+            return
+        except Exception as e:
+            print(f"⚠️ 逐個合併失敗: {e}")
+        
+        # 最後備用：直接複製第一個文件
+        if ordered_segments:
+            print("🔄 所有合併方法都失敗，使用最後備用方案：複製第一個段落")
+            import shutil
+            shutil.copy(ordered_segments[0], output_path)
+            print(f"📁 已複製第一個段落: {ordered_segments[0]}")
+        else:
+                         raise Exception("所有合併方法都失敗且無可用段落")
+
+    def verify_output_file(self, output_path):
+        """驗證輸出文件"""
+        if os.path.exists(output_path):
+            file_size = os.path.getsize(output_path)
+            print(f"📹 輸出文件: {output_path}")
+            print(f"📊 輸出文件大小: {file_size/1024/1024:.2f} MB")
+            
+            # 檢查文件是否有效（大小大於1KB）
+            if file_size < 1024:
+                print("⚠️ 輸出文件太小，可能有問題")
+            else:
+                print("✅ 輸出文件驗證通過")
+        else:
+            print("❌ 輸出文件創建失敗")
+
+    def merge_segments_sequentially(self, segments, output_path):
+        """逐個合併段落（兩兩合併，統一解析度）"""
+        print(f"  🔗 開始逐個合併 {len(segments)} 個段落...")
+        
+        if len(segments) == 1:
+            import shutil
+            shutil.copy(segments[0], output_path)
+            return
+        
+        # 從第一個和第二個開始合併
+        temp_output = output_path.replace('.mp4', '_temp.mp4')
+        
+        # 第一次合併（統一解析度）
+        command = f'ffmpeg -y -i "{segments[0]}" -i "{segments[1]}" -filter_complex "[0:v]scale=1280:720,setsar=1:1[v0];[1:v]scale=1280:720,setsar=1:1[v1];[0:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a0];[1:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac "{temp_output}"'
+        print(f"    🔧 合併段落 1 和 2 (統一解析度)...")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            raise Exception(f"合併段落1和2失敗: {result.stderr}")
+        
+        # 如果有更多段落，逐個添加
+        for i in range(2, len(segments)):
+            prev_temp = temp_output
+            new_temp = output_path.replace('.mp4', f'_temp_{i}.mp4')
+            
+            command = f'ffmpeg -y -i "{prev_temp}" -i "{segments[i]}" -filter_complex "[0:v]scale=1280:720,setsar=1:1[v0];[1:v]scale=1280:720,setsar=1:1[v1];[0:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a0];[1:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac "{new_temp}"'
+            print(f"    🔧 添加段落 {i+1} (統一解析度)...")
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                raise Exception(f"添加段落{i+1}失敗: {result.stderr}")
+            
+            # 清理上一個臨時文件
+            if os.path.exists(prev_temp):
+                os.remove(prev_temp)
+            
+            temp_output = new_temp
+        
+        # 移動最終文件到目標位置
+        if os.path.exists(temp_output):
+            import shutil
+            shutil.move(temp_output, output_path)
+        
+        print(f"  ✅ 逐個合併完成")
+
     def process(self):
         # 獲取輸入值
         api_key = self.api_key_var.get()
         input_path = self.input_path_var.get()
         language = self.language_var.get()
-        face_path = self.face_path_var.get()
         output_path = self.output_path_var.get()
         enable_slide_translation = self.slide_translation_var.get()
         
@@ -689,244 +1505,141 @@ class DeepVideoTranslationApp:
             messagebox.showerror("錯誤", "請填寫所有必要欄位")
             return
             
-        # 檢查是否需要嘴形同步
-        if not face_path:
-            if not messagebox.askyesno("確認", "沒有選擇嘴形目標視頻，將只進行語音克隆和翻譯。是否繼續？"):
-                return
-        else:
-            # 如果選擇了嘴形目標，先進行視頻內容分析
-            print("🔍 正在分析嘴形目標視頻內容...")
-            face_count, slide_count, total_frames = self.analyze_video_content(face_path)
-            print(f"📊 視頻分析結果: 人臉幀 {face_count}, 投影片幀 {slide_count}, 總幀數 {total_frames}")
-            
-            if face_count == 0:
-                if not messagebox.askyesno("警告", 
-                    f"檢測到選擇的視頻中沒有明顯的人臉內容。\n"
-                    f"視頻包含 {slide_count} 個投影片幀，{total_frames} 總幀數。\n"
-                    f"這可能導致嘴形同步失敗。\n\n是否仍要繼續處理？"):
-                    return
+        if not input_path.lower().endswith('.mp4'):
+            messagebox.showerror("錯誤", "請選擇MP4格式的影片文件")
+            return
         
         try:
-            # 創建必要的目錄
-            os.makedirs("temp", exist_ok=True)
+            # 確保所有必要的目錄存在
+            self.ensure_basic_directories()
             
             # 更新狀態
-            self.status_var.set("正在處理中...")
+            self.status_var.set("正在進行智能分段分析...")
             self.progress['value'] = 0
             self.root.update()
             
-            # 步驟1：語音轉文字並翻譯
-            self.status_var.set("正在進行語音識別和翻譯...")
-            translated_text = voice(input_path, api_key, language)
-            print(f"翻譯結果: {translated_text}")
-            self.progress['value'] = 20
-            self.root.update()
+            # 步驟1：分析並分段影片
+            segments_info = self.analyze_and_segment_video(input_path)
             
-            # 步驟2：語音克隆
-            self.status_var.set("正在進行語音克隆...")
-            temp_audio = "temp/cloned_audio.wav"
-            audio_path = xttsv(translated_text, input_path, temp_audio, language)
-            self.progress['value'] = 40
-            self.root.update()
+            if not segments_info:
+                messagebox.showerror("錯誤", "無法分析影片內容，請確認影片格式正確")
+                return
             
-            # 步驟3：處理嘴形同步
-            video_for_slide_translation = input_path
-            if face_path:
-                self.status_var.set("正在準備嘴形同步...")
-                
-                # 如果啟用了投影片翻譯，需要先提取只包含人臉的視頻片段
-                if enable_slide_translation:
-                    # 檢查目標視頻是否包含混合內容（人臉+簡報）
-                    print("📋 檢測到啟用投影片翻譯，正在分析視頻內容...")
-                    face_only_video = "temp/face_only_video.mp4"
-                    try:
-                        self.extract_face_only_video(face_path, face_only_video)
-                        lipsync_target = face_only_video
-                    except ValueError as e:
-                        print(f"⚠️ 人臉提取失敗: {e}")
-                        print("🔄 將嘗試直接使用原始視頻進行嘴形同步...")
-                        lipsync_target = face_path
-                else:
-                    lipsync_target = face_path
-                
-                # 進行嘴形同步
-                self.status_var.set("正在進行嘴形同步...")
-                temp_lipsync_video = "temp/lipsync_video.mp4"
-                try:
-                    print(f"🎬 開始嘴形同步: {lipsync_target} -> {temp_lipsync_video}")
-                    run_inference(lipsync_target, audio_path, temp_lipsync_video)
-                    print("✅ 嘴形同步完成")
-                except Exception as e:
-                    print(f"❌ 嘴形同步失敗: {e}")
-                    if "Face not detected" in str(e):
-                        print("💡 建議:")
-                        print("   1. 確認視頻中包含清晰可見的人臉")
-                        print("   2. 如果視頻主要是投影片，請取消勾選投影片翻譯，或選擇其他包含人臉的視頻")
-                        print("   3. 嘗試使用更高質量的視頻")
-                        raise ValueError(f"嘴形同步失敗: 視頻中沒有檢測到足夠的人臉內容。\n\n{str(e)}")
-                    else:
-                        raise
-                
-                # 如果有投影片翻譯，需要將嘴形同步結果合併回原始視頻結構
-                if enable_slide_translation:
-                    # 使用原始視頻進行投影片翻譯，但人臉部分用嘴形同步的結果
-                    video_for_slide_translation = face_path  # 保持原始結構
-                    # 嘴形同步的結果將在投影片處理時被整合
-                else:
-                    video_for_slide_translation = temp_lipsync_video
-                    
-                self.progress['value'] = 60
-                self.root.update()
+            # 步驟2：處理人臉段落
+            self.status_var.set("正在處理人臉段落...")
+            face_segments = self.process_face_segments("temp/faceai", language)
             
-            # 步驟4：投影片翻譯（在嘴形同步之後）
+            # 步驟3：處理簡報段落
+            processed_slide_segments = []
             if enable_slide_translation:
-                self.status_var.set("正在智能識別和翻譯投影片...")
+                self.status_var.set("正在處理簡報段落...")
                 slide_language = self.slide_language_var.get()
-                translated_slides_dir, slide_frame_mapping = self.extract_and_translate_slides(video_for_slide_translation, slide_language)
-                print(f"翻譯了 {len(slide_frame_mapping)} 張投影片")
-                
-                # 創建最終影片 - 如果有嘴形同步，需要整合兩個視頻
-                if face_path:
-                    # 整合嘴形同步和投影片翻譯的結果
-                    self.create_integrated_video(video_for_slide_translation, temp_lipsync_video, 
-                                                translated_slides_dir, slide_frame_mapping, output_path, audio_path)
-                else:
-                    # 只有投影片翻譯
-                    self.create_translated_video(video_for_slide_translation, translated_slides_dir, 
-                                                slide_frame_mapping, output_path, audio_path)
-                
-                self.progress['value'] = 100
-                self.root.update()
+                processed_slide_segments = self.process_slide_segments("temp/pptai", language, slide_language)
             else:
-                # 如果沒有投影片翻譯，確保音頻正確合成
-                if face_path:
-                    # 已經有嘴形同步的影片，添加音頻
-                    self.status_var.set("正在合成最終視頻...")
-                    command = f'ffmpeg -y -i "{temp_lipsync_video}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{output_path}"'
-                    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                # 如果不啟用簡報翻譯，直接處理音頻但不翻譯投影片內容
+                print("📋 簡報翻譯已停用，僅處理音頻...")
+                ppt_dir = "temp/pptai"
+                self.ensure_directory_exists(ppt_dir)
+                ppt_files = sorted([f for f in os.listdir(ppt_dir) if f.endswith('.mp4')])
+                
+                for j, filename in enumerate(ppt_files):
+                    input_path_seg = os.path.join(ppt_dir, filename)
+                    base_name = os.path.splitext(filename)[0]
+                    processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
                     
-                    if result.returncode != 0:
-                        print(f"音頻合成警告: {result.stderr}")
-                        # 如果合成失敗，直接複製視頻
+                    try:
+                        print(f"📋 處理簡報音頻 {filename}...")
+                        # 處理音頻（直接使用段落文件，因為已包含音頻）
+                        api_key = self.api_key_var.get()
+                        
+                        try:
+                            translated_text = voice(input_path_seg, api_key, language)
+                        except Exception as audio_error:
+                            print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
+                            translated_text = ""
+                        
+                        if translated_text and translated_text.strip():
+                            print(f"  📝 翻譯結果: {translated_text}")
+                            temp_audio = os.path.join(ppt_dir, f"{base_name}_audio.wav")
+                            self.ensure_directory_exists(os.path.dirname(temp_audio))
+                            
+                            try:
+                                # 使用段落文件本身作為參考音頻進行語音克隆
+                                xttsv(translated_text, input_path_seg, temp_audio, language)
+                                
+                                # 合成音頻和視頻（保持原始視頻內容，只替換音頻）
+                                command = f'ffmpeg -y -i "{input_path_seg}" -i "{temp_audio}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "{processed_path}"'
+                                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                                if result.returncode != 0:
+                                    print(f"  ⚠️ 音頻合成失敗，使用原始視頻: {result.stderr}")
+                                    import shutil
+                                    shutil.copy(input_path_seg, processed_path)
+                                else:
+                                    print(f"  ✅ 音頻替換完成")
+                            except Exception as tts_error:
+                                print(f"  ⚠️ 語音克隆失敗: {tts_error}")
+                                import shutil
+                                shutil.copy(input_path_seg, processed_path)
+                        else:
+                            # 沒有音頻，直接複製
+                            print(f"  ⚠️ 沒有檢測到語音內容")
+                            import shutil
+                            shutil.copy(input_path_seg, processed_path)
+                        
+                        processed_slide_segments.append(processed_path)
+                        
+                    except Exception as e:
+                        print(f"  ❌ 處理簡報音頻失敗: {e}")
                         import shutil
-                        shutil.copy(temp_lipsync_video, output_path)
-                else:
-                    # 只有語音，保存音檔
-                    audio_output = output_path.replace('.mp4', '.wav')
-                    import shutil
-                    shutil.copy(audio_path, audio_output)
-                    messagebox.showinfo("完成", f"語音克隆完成！音檔已保存到：{audio_output}")
-                    self.status_var.set("處理完成！")
-                    return
+                        shutil.copy(input_path_seg, processed_path)
+                        processed_slide_segments.append(processed_path)
                     
-                self.progress['value'] = 100
+                    # 更新進度
+                    progress = 70 + int((j / len(ppt_files)) * 20)
+                    self.progress['value'] = progress
+                    self.root.update()
             
+            # 步驟4：自動剪接
+            self.status_var.set("正在進行自動剪接...")
+            self.progress['value'] = 90
+            self.root.update()
+            
+            self.auto_edit_segments(face_segments, processed_slide_segments, segments_info, output_path)
+            
+            self.progress['value'] = 100
             self.status_var.set("處理完成！")
-            messagebox.showinfo("完成", "處理已完成！")
+            messagebox.showinfo("完成", f"智能分段處理已完成！\n輸出文件：{output_path}")
             
         except Exception as e:
             messagebox.showerror("錯誤", f"處理過程中發生錯誤：{str(e)}")
             self.status_var.set("處理失敗")
             self.progress['value'] = 0
             print(f"詳細錯誤信息: {e}")
+            import traceback
+            traceback.print_exc()
 
-    def create_integrated_video(self, original_video, lipsync_video, translated_slides_dir, slide_frame_mapping, output_path, audio_path):
-        """整合嘴形同步視頻和投影片翻譯結果"""
-        frame_interval = int(self.frame_interval_var.get())
-        hash_threshold = int(self.hash_threshold_var.get())
+    def ensure_basic_directories(self):
+        """確保所有必要的基本目錄都存在"""
+        required_dirs = [
+            "temp",
+            "temp/faceai", 
+            "temp/pptai",
+            "temp/audio_segments",
+            "temp/slides_output",
+            "temp/translated_slides",
+            "temp/segments"
+        ]
         
-        # 讀取翻譯後的投影片
-        translated_slides = {}
-        for filename in os.listdir(translated_slides_dir):
-            if filename.startswith('slide_') and filename.endswith('.jpg'):
-                slide_index = int(filename.split('_')[1].split('.')[0])
-                slide_path = os.path.join(translated_slides_dir, filename)
-                translated_slides[slide_index] = cv2.imread(slide_path)
+        for dir_path in required_dirs:
+            os.makedirs(dir_path, exist_ok=True)
+            print(f"✅ 確保目錄存在: {dir_path}")
 
-        # 打開原始影片和嘴形同步影片
-        cap_original = cv2.VideoCapture(original_video)
-        cap_lipsync = cv2.VideoCapture(lipsync_video)
-        
-        width = int(cap_original.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap_original.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap_original.get(cv2.CAP_PROP_FPS)
-
-        # 創建臨時影片
-        temp_video_path = "temp/integrated_video.mp4"
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
-
-        frame_count = 0
-        prev_hash = None
-        current_slide_index = None
-        current_slide = None
-
-        print("🎬 開始整合嘴形同步和投影片翻譯...")
-
-        while True:
-            ret_orig, frame_orig = cap_original.read()
-            ret_lipsync, frame_lipsync = cap_lipsync.read()
-            
-            if not ret_orig:
-                break
-
-            # 檢查是否為投影片幀
-            if frame_count % frame_interval == 0:
-                pil_image = Image.fromarray(cv2.cvtColor(frame_orig, cv2.COLOR_BGR2RGB))
-                curr_hash = imagehash.phash(pil_image)
-
-                if prev_hash is None or abs(curr_hash - prev_hash) > hash_threshold:
-                    # 檢查是否有對應的翻譯投影片
-                    if frame_count in slide_frame_mapping:
-                        slide_idx = slide_frame_mapping[frame_count]
-                        if slide_idx in translated_slides:
-                            current_slide = cv2.resize(translated_slides[slide_idx], (width, height))
-                            current_slide_index = slide_idx
-                            print(f"📽️ 替換幀 {frame_count} 為投影片 {slide_idx}")
-                    elif not self.is_slide_frame(frame_orig):
-                        # 如果不是投影片頁面，清除當前投影片
-                        current_slide = None
-                        current_slide_index = None
-                    
-                    prev_hash = curr_hash
-
-            # 選擇要寫入的幀
-            if current_slide is not None and self.is_slide_frame(frame_orig):
-                # 投影片頁面，使用翻譯後的投影片
-                out.write(current_slide)
-            elif ret_lipsync and self.detect_faces_in_frame(frame_orig):
-                # 人臉頁面，使用嘴形同步的結果
-                frame_lipsync_resized = cv2.resize(frame_lipsync, (width, height))
-                out.write(frame_lipsync_resized)
-            else:
-                # 其他情況，使用原始幀
-                out.write(frame_orig)
-
-            frame_count += 1
-
-        cap_original.release()
-        cap_lipsync.release()
-        out.release()
-
-        # 合成音頻和視頻
-        print("🔊 正在合成音頻...")
-        try:
-            command = f'ffmpeg -y -i "{temp_video_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{output_path}"'
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                print("✅ 整合視頻創建成功")
-            else:
-                print(f"❌ 音頻合成失敗: {result.stderr}")
-                # 如果合成失敗，至少保留視頻
-                import shutil
-                shutil.copy(temp_video_path, output_path)
-                
-        except Exception as e:
-            print(f"❌ 音頻合成錯誤: {e}")
-            # 如果出錯，至少保留視頻
-            import shutil
-            shutil.copy(temp_video_path, output_path)
+    def ensure_directory_exists(self, directory_path):
+        """確保指定目錄存在"""
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path, exist_ok=True)
+            print(f"📁 創建目錄: {directory_path}")
+        return directory_path
 
 def main():
     root = tk.Tk()
