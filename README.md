@@ -12,8 +12,7 @@ AI 深度影片翻譯系統，集成語音識別、語音複製、嘴形調整�
 - **🖥️ 圖形化界面**：tkinter GUI 操作介面
 
 ## 示範影片
-<video src="assets/八國語言翻譯影片.mov" controls autoplay loop>
-</video>
+assets/八國語言翻譯影片.mov
 
 ## 🛠️ 技術架構
 
