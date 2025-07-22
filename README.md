@@ -19,7 +19,11 @@ https://github.com/user-attachments/assets/5c8b0f10-e5e0-422a-8a3b-b469bdfabc0f
 ## 嘴形同步＋簡報OCR同時翻譯示範
 
 
-https://github.com/user-attachments/assets/e6189283-6238-4a33-9772-be1b08d441d4
+
+
+https://github.com/user-attachments/assets/f74c6488-1ddc-4ac2-827b-0238bae53e1d
+
+
 
 
 
