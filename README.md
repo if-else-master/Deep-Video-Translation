@@ -11,10 +11,16 @@ AI 深度影片翻譯系統，集成語音識別、語音複製、嘴形調整�
 - **🎬 多重合併策略**：解決不同解析度視頻合併問題，確保完整輸出
 - **🖥️ 圖形化界面**：tkinter GUI 操作介面
 
-## 示範影片
+## 嘴形同步示範影片
 
 
 https://github.com/user-attachments/assets/5c8b0f10-e5e0-422a-8a3b-b469bdfabc0f
+
+## 嘴形同步＋簡報OCR同時翻譯示範
+
+
+
+https://github.com/user-attachments/assets/b0955944-2aef-4213-ac00-890833dfe2b4
 
 
 
