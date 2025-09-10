@@ -41,8 +41,12 @@ class DeepVideoTranslationApp:
         # API Key 輸入
         ttk.Label(main_frame, text="Gemini API Key:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.api_key_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.api_key_var, width=50).grid(row=0, column=1, columnspan=2, sticky=tk.W, pady=5)
-        
+        ttk.Entry(
+            main_frame,
+            textvariable=self.api_key_var,
+            width=50,
+            show="*"
+        ).grid(row=0, column=1, columnspan=2, sticky=tk.W, pady=5)        
         # 輸入影片選擇
         ttk.Label(main_frame, text="輸入影片:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.input_path_var = tk.StringVar()
@@ -92,7 +96,7 @@ class DeepVideoTranslationApp:
         self.progress.grid(row=6, column=0, columnspan=3, pady=20)
         
         # 開始按鈕
-        ttk.Button(main_frame, text="開始智能分段處理", command=self.process).grid(row=7, column=0, columnspan=3, pady=10)
+        ttk.Button(main_frame, text="開始", command=self.process).grid(row=7, column=0, columnspan=3, pady=10)
         
         # 狀態標籤
         self.status_var = tk.StringVar()
