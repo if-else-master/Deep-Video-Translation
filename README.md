@@ -17,7 +17,15 @@ AI 深度影片翻譯系統，集成語音識別、語音複製、嘴形調整�
 https://github.com/user-attachments/assets/5c8b0f10-e5e0-422a-8a3b-b469bdfabc0f
 
 ## 嘴形同步＋簡報OCR同時翻譯示範
-https://github.com/user-attachments/assets/0aa2f342-90b7-496a-9ee3-6fc70d9bba28
+
+
+
+
+https://github.com/user-attachments/assets/f74c6488-1ddc-4ac2-827b-0238bae53e1d
+
+
+
+
 
 ## 🛠️ 技術架構
 
@@ -601,12 +609,13 @@ pad=1280:720:(ow-iw)/2:(oh-ih)/2
 - **內存管理**: 及時清理臨時文件避免空間不足
 - **容錯設計**: 單個段落失敗不影響整體處理
 
-## 未來目標
-- 加上 RAG (檢索增強生成)
-- 支援更多視頻格式
-- 實現批量處理功能
-- 添加Web界面
-- 優化處理速度
+##TODO list
+- [ ] 簡報OCR翻譯檢測
+- [ ] 加上 RAG (檢索增強生成)
+- [ ] 添加Web界面
+- [ ] 多音頻處理
+- [ ] 實現批量處理功能
+- [ ] Speaker Diarization
 
 ## 📄 授權條款
 
