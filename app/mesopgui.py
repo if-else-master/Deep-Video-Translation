@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import os
 import threading
-from dataclasses import dataclass
+import datetime
+from dataclasses import dataclass, field
 from typing import Optional
+from collections import deque
+import time
 
 import mesop as me
 
@@ -45,6 +48,65 @@ except ImportError:
             raise NotImplementedError("VideoProcessor 模塊未找到")
 
 
+# ---- 全局共享數據（線程安全） ----
+class ProcessingState:
+    """線程安全的處理狀態類"""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.logs = deque(maxlen=100)  # 最多保留100條日誌
+        self.progress = 0
+        self.status = "準備就緒"
+        self.is_running = False
+        self.error = None
+        self.session_id = None  # 用於區分不同的處理會話
+    
+    def add_log(self, message: str):
+        with self.lock:
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            log_entry = f"[{timestamp}] {message}"
+            self.logs.append(log_entry)
+    
+    def update_progress(self, progress: int, status: str = None):
+        with self.lock:
+            self.progress = max(0, min(100, progress))
+            if status:
+                self.status = status
+    
+    def get_state(self):
+        with self.lock:
+            return {
+                'logs': list(self.logs),
+                'progress': self.progress,
+                'status': self.status,
+                'is_running': self.is_running,
+                'error': self.error,
+                'session_id': self.session_id
+            }
+    
+    def start_session(self, session_id: str):
+        with self.lock:
+            self.logs.clear()
+            self.progress = 0
+            self.status = "正在準備..."
+            self.is_running = True
+            self.error = None
+            self.session_id = session_id
+    
+    def end_session(self, success: bool, message: str = None):
+        with self.lock:
+            self.is_running = False
+            if not success:
+                self.error = message
+                self.progress = 0
+            else:
+                self.progress = 100
+            if message:
+                self.status = message
+
+# 全局處理狀態實例
+processing_state = ProcessingState()
+
+
 # ---- UI 狀態 ----
 @me.stateclass
 class AppState:
@@ -57,24 +119,29 @@ class AppState:
     hash_threshold: str = "5"
     output_path: str = ""
 
-    status: str = "準備就緒"
-    progress: int = 0
-    running: bool = False
     uploaded_file_name: Optional[str] = None
+    # 完成提示狀態
+    show_done: bool = False
+    done_message: str = "處理完成！"
+    # 會話ID（用於追蹤當前處理）
+    session_id: str = ""
+    # 最後更新時間（用於觸發UI刷新）
+    last_update: float = 0.0
 
 
 # ---- 風格樣式 ----
 def page_container_style() -> me.Style:
     return me.Style(
-        max_width="1000px",
+        max_width="1200px",
         margin=me.Margin(top="0", right="auto", bottom="0", left="auto"),
         padding=me.Padding(top="24px", right="24px", bottom="24px", left="24px"),
+        text_align="center",
     )
 
 
 def form_label_style() -> me.Style:
     return me.Style(
-        font_weight="600",
+        font_weight="1000",
         margin=me.Margin(top="0", right="0", bottom="6px", left="0"),
     )
 
@@ -113,6 +180,28 @@ def slide_frame_style() -> me.Style:
         border=me.Border(top=side, right=side, bottom=side, left=side),
         border_radius="8px",
         margin=me.Margin(top="8px", right="0", bottom="0", left="0"),
+    )
+
+
+def terminal_style() -> me.Style:
+    """終端風格的日誌顯示區域"""
+    side = me.BorderSide(width="2px", color="#2d2d2d", style="solid")
+    return me.Style(
+        background="#1e1e1e",
+        color="#d4d4d4",
+        font_family="'Menlo', 'Monaco', 'Courier New', monospace",
+        font_size="12px",
+        padding=me.Padding(top="16px", right="16px", bottom="16px", left="16px"),
+        border=me.Border(top=side, right=side, bottom=side, left=side),
+        border_radius="8px",
+        height="350px",
+        max_height="350px",
+        overflow_y="auto",
+        overflow_x="hidden",
+        margin=me.Margin(top="0", right="0", bottom="0", left="0"),
+        white_space="pre-wrap",
+        # word_break="normal",
+        box_shadow="0 4px 12px rgba(0,0,0,0.15)",
     )
 
 
@@ -187,17 +276,40 @@ def on_output_path_change(e: me.InputEvent):
     state.output_path = e.value
 
 
+def _on_progress(message: str, progress: Optional[int] = None):
+    """背景任務進度回調 → 更新全局狀態（線程安全）"""
+    # 添加日誌
+    processing_state.add_log(message)
+    
+    # 更新進度
+    if progress is not None:
+        processing_state.update_progress(progress, message)
+    else:
+        # 只更新狀態消息
+        with processing_state.lock:
+            processing_state.status = message
+
+
+def refresh_logs(e: me.ClickEvent):
+    """刷新日誌顯示（觸發頁面重新渲染）"""
+    state = me.state(AppState)
+    # 更新時間戳以觸發重新渲染
+    state.last_update = time.time()
+
+
 def start_processing(e: me.ClickEvent):
     state = me.state(AppState)
-    if state.running:
+    
+    # 檢查是否已經在運行
+    if processing_state.is_running:
         return
 
     # 驗證
     if not state.api_key or not state.input_path:
-        state.status = "請填寫 API Key 並上傳影片"
+        processing_state.add_log("❌ 請填寫 API Key 並上傳影片")
         return
     if not state.input_path.lower().endswith(".mp4"):
-        state.status = "請選擇 MP4 格式的影片"
+        processing_state.add_log("❌ 請選擇 MP4 格式的影片")
         return
 
     # 解析參數
@@ -210,39 +322,300 @@ def start_processing(e: me.ClickEvent):
     except Exception:
         hash_th = 5
 
+    # 創建新的會話ID
+    session_id = f"session_{int(time.time())}"
+    state.session_id = session_id
+    state.show_done = False
+    
     # 設置初始狀態
-    state.running = True
-    state.progress = 0
-    state.status = "正在準備..."
+    processing_state.start_session(session_id)
 
     # 背景執行，避免阻塞 UI
     def run_task():
+        # 包裝 print 函數來捕獲輸出
+        import builtins
+        import subprocess
+        original_print = builtins.print
+        
+        def custom_print(*args, **kwargs):
+            message = ' '.join(str(arg) for arg in args)
+            _on_progress(message)
+            original_print(*args, **kwargs)
+        
+        builtins.print = custom_print
+        
         try:
-            # 由於 Mesop 的限制，這裡簡化進度更新
-            # 實際項目中可能需要使用 WebSocket 或輪詢機制
+            _on_progress("🚀 初始化處理系統...", 0)
             
-            vp = VideoProcessor(progress_callback=None)  # 簡化回調
+            # 導入必要的模組和函數
+            from txtvoice import voice
+            from xttsv import xttsv
+            import cv2
+            import easyocr
+            import numpy as np
+            import imagehash
+            from PIL import Image, ImageDraw, ImageFont
+            import shutil
             
-            vp.process_complete_video(
-                input_path=state.input_path,
-                output_path=state.output_path or (os.path.splitext(state.input_path)[0] + "_translated.mp4"),
-                language=state.language,
-                slide_language=state.slide_language,
-                api_key=state.api_key,
-                enable_slide_translation=bool(state.slide_enabled),
-                min_segment_duration=min_seg,
-                hash_threshold=hash_th,
-            )
+            # 獲取參數
+            api_key = state.api_key
+            input_path = state.input_path
+            language = state.language
+            output_path = state.output_path or (os.path.splitext(input_path)[0] + "_translated.mp4")
+            enable_slide_translation = state.slide_enabled
+            slide_language = state.slide_language
             
-            # 更新最終狀態
-            state.progress = 100
-            state.status = f"處理完成：{state.output_path}"
+            
+            # 創建輔助類（不使用 tkinter）
+            class ProcessorHelper:
+                def __init__(self):
+                    self.font_paths = self.setup_fonts()
+                
+                def setup_fonts(self):
+                    """設置字體路徑"""
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    return {
+                        "Japanese": os.path.join(current_dir, "NotoSansCJKjp-Regular.otf"),
+                        "English": self.get_system_font() or "/System/Library/Fonts/Arial.ttf",
+                        "Chinese": os.path.join(current_dir, "NotoSansTC-Regular.ttf")
+                    }
+                
+                def get_system_font(self):
+                    """獲取系統可用字體"""
+                    possible_fonts = [
+                        "/System/Library/Fonts/PingFang.ttc",
+                        "/System/Library/Fonts/Arial.ttf",
+                        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                        "C:/Windows/Fonts/msyh.ttc",
+                        "C:/Windows/Fonts/arial.ttf",
+                        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                    ]
+                    for font_path in possible_fonts:
+                        if os.path.exists(font_path):
+                            print(f"✅ {font_path} 字體已找到")
+                            return font_path
+                    print("❌ 字體未找到")
+                    return None
+                
+                def ensure_directory_exists(self, directory_path):
+                    """確保指定目錄存在"""
+                    if not os.path.exists(directory_path):
+                        os.makedirs(directory_path, exist_ok=True)
+                    return directory_path
+                
+                def ensure_basic_directories(self):
+                    """確保所有必要的基本目錄都存在"""
+                    required_dirs = [
+                        "temp", "temp/faceai", "temp/pptai",
+                        "temp/audio_segments", "temp/slides_output",
+                        "temp/translated_slides", "temp/segments"
+                    ]
+                    for dir_path in required_dirs:
+                        os.makedirs(dir_path, exist_ok=True)
+                    print(f"✅ 確保目錄存在: {dir_path}")
+            
+            helper = ProcessorHelper()
+            helper.ensure_basic_directories()
+            
+            _on_progress("📹 開始處理影片...", 5)
+            
+            # 導入 main.py 中的處理類但只使用其方法
+            # 我們需要創建一個不依賴 tkinter 的版本
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("main_module", os.path.join(os.path.dirname(__file__), "main.py"))
+            main_module = importlib.util.module_from_spec(spec)
+            
+            # 暫時替換 tkinter 以避免導入問題
+            import sys
+            original_modules = {}
+            for mod in ['tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox']:
+                if mod in sys.modules:
+                    original_modules[mod] = sys.modules[mod]
+            
+            # 創建一個假的 tkinter 模組
+            class FakeTk:
+                class Tk:
+                    def __init__(self): pass
+                    def withdraw(self): pass
+                    def update(self): pass
+                    def destroy(self): pass
+                    def mainloop(self): pass
+                    def title(self, t): pass
+                    def geometry(self, g): pass
+                
+                class StringVar:
+                    def __init__(self, *args, **kwargs):
+                        self.value = kwargs.get('value', '')
+                    def get(self): return self.value
+                    def set(self, v): self.value = v
+                
+                class BooleanVar:
+                    def __init__(self, *args, **kwargs):
+                        self.value = kwargs.get('value', False)
+                    def get(self): return self.value
+                    def set(self, v): self.value = v
+                
+                class Checkbutton:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                
+                W = E = N = S = 0
+            
+            class FakeTtk:
+                class Frame:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                    def grid_remove(self, *args, **kwargs): pass
+                
+                class Label:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                
+                class Entry:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                
+                class Button:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                
+                class Combobox:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                
+                class Progressbar:
+                    def __init__(self, *args, **kwargs): 
+                        self.data = {'value': 0}
+                    def __setitem__(self, k, v):
+                        self.data[k] = v
+                        if k == 'value':
+                            _on_progress("", int(v))
+                    def __getitem__(self, k): return self.data.get(k, 0)
+                    def grid(self, *args, **kwargs): pass
+                
+                class LabelFrame:
+                    def __init__(self, *args, **kwargs): pass
+                    def grid(self, *args, **kwargs): pass
+                    def grid_remove(self, *args, **kwargs): pass
+            
+            # 創建假的 messagebox 和 filedialog
+            class FakeMessagebox:
+                @staticmethod
+                def showerror(title, message):
+                    _on_progress(f"❌ {title}: {message}")
+                @staticmethod
+                def showinfo(title, message):
+                    _on_progress(f"ℹ️ {title}: {message}")
+                @staticmethod
+                def showwarning(title, message):
+                    _on_progress(f"⚠️ {title}: {message}")
+            
+            class FakeFiledialog:
+                @staticmethod
+                def askopenfilename(**kwargs):
+                    return ""
+                @staticmethod
+                def asksaveasfilename(**kwargs):
+                    return ""
+            
+            sys.modules['tkinter'] = FakeTk
+            sys.modules['tkinter.ttk'] = FakeTtk
+            sys.modules['tkinter.messagebox'] = FakeMessagebox
+            sys.modules['tkinter.filedialog'] = FakeFiledialog
+            
+            try:
+                spec.loader.exec_module(main_module)
+                
+                # 創建處理器實例（使用假的 root）
+                fake_root = FakeTk.Tk()
+                app = main_module.DeepVideoTranslationApp(fake_root)
+                
+                # 設定參數
+                app.api_key_var.set(api_key)
+                app.input_path_var.set(input_path)
+                app.language_var.set(language)
+                app.output_path_var.set(output_path)
+                app.slide_translation_var.set(enable_slide_translation)
+                app.slide_language_var.set(slide_language)
+                app.min_segment_duration_var.set(str(min_seg))
+                app.hash_threshold_var.set(str(hash_th))
+                
+                # 執行處理流程
+                _on_progress("🔍 正在進行智能分段分析...", 10)
+                segments_info = app.analyze_and_segment_video(input_path)
+                
+                if not segments_info:
+                    raise Exception("無法分析影片內容，請確認影片格式正確")
+                
+                _on_progress("👤 正在處理人臉段落...", 40)
+                face_segments = app.process_face_segments("temp/faceai", language)
+                
+                processed_slide_segments = []
+                if enable_slide_translation:
+                    _on_progress("📊 正在處理簡報段落...", 70)
+                    processed_slide_segments = app.process_slide_segments("temp/pptai", language, slide_language)
+                else:
+                    _on_progress("📋 簡報翻譯已停用，僅處理音頻...", 70)
+                    ppt_dir = "temp/pptai"
+                    helper.ensure_directory_exists(ppt_dir)
+                    ppt_files = sorted([f for f in os.listdir(ppt_dir) if f.endswith('.mp4')])
+                    
+                    for j, filename in enumerate(ppt_files):
+                        input_path_seg = os.path.join(ppt_dir, filename)
+                        base_name = os.path.splitext(filename)[0]
+                        processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
+                        
+                        try:
+                            _on_progress(f"📋 處理簡報音頻 {filename}...", 70 + int((j / len(ppt_files)) * 20))
+                            
+                            try:
+                                translated_text = voice(input_path_seg, api_key, language)
+                            except Exception as audio_error:
+                                _on_progress(f"⚠️ 音頻轉文字失敗: {audio_error}")
+                                translated_text = ""
+                            
+                            if translated_text and translated_text.strip():
+                                temp_audio = os.path.join(ppt_dir, f"{base_name}_audio.wav")
+                                helper.ensure_directory_exists(os.path.dirname(temp_audio))
+                                
+                                try:
+                                    xttsv(translated_text, input_path_seg, temp_audio, language)
+                                    command = f'ffmpeg -y -i "{input_path_seg}" -i "{temp_audio}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "{processed_path}"'
+                                    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                                    if result.returncode != 0:
+                                        shutil.copy(input_path_seg, processed_path)
+                                except Exception as tts_error:
+                                    _on_progress(f"⚠️ 語音克隆失敗: {tts_error}")
+                                    shutil.copy(input_path_seg, processed_path)
+                            else:
+                                shutil.copy(input_path_seg, processed_path)
+                            
+                            processed_slide_segments.append(processed_path)
+                        except Exception as e:
+                            _on_progress(f"❌ 處理簡報音頻失敗: {e}")
+                            shutil.copy(input_path_seg, processed_path)
+                            processed_slide_segments.append(processed_path)
+                
+                _on_progress("🎬 正在進行自動剪接...", 90)
+                app.auto_edit_segments(face_segments, processed_slide_segments, segments_info, output_path)
+                
+                _on_progress("✅ 處理完成！", 100)
+                processing_state.end_session(True, f"處理完成：{output_path}")
+                
+            finally:
+                # 恢復原始模組
+                for mod, orig in original_modules.items():
+                    sys.modules[mod] = orig
             
         except Exception as ex:
-            state.progress = 0
-            state.status = f"處理失敗：{ex}"
+            _on_progress(f"❌ 處理失敗：{ex}", 0)
+            import traceback
+            error_details = traceback.format_exc()
+            _on_progress(f"錯誤詳情：\n{error_details}")
+            processing_state.end_session(False, f"處理失敗：{ex}")
         finally:
-            state.running = False
+            # 恢復原始 print 函數
+            builtins.print = original_print
 
     # 在實際應用中，可能需要使用任務隊列如 Celery
     # 這裡為了簡化，仍使用線程
@@ -253,10 +626,30 @@ def start_processing(e: me.ClickEvent):
 @me.page(path="/", title="Deep Video Translation (Mesop)")
 def page():
     state = me.state(AppState)
-
+    
+    # 從全局狀態獲取處理信息
+    proc_state = processing_state.get_state()
+    current_logs = proc_state['logs']
+    current_progress = proc_state['progress']
+    current_status = proc_state['status']
+    is_running = proc_state['is_running']
+    
+    # 如果處理完成且會話ID匹配，顯示完成消息
+    if not is_running and state.session_id == proc_state['session_id'] and proc_state['session_id']:
+        if proc_state['error']:
+            state.show_done = False  # 錯誤時不顯示完成提示
+        elif current_progress == 100 and not state.show_done:
+            state.show_done = True
+            state.done_message = f"已完成處理，輸出：{state.output_path}"
+    
+    # 主題與密度（輕量美化）
+    try:
+        me.set_theme_mode("light")
+        me.set_theme_density("comfortable")
+    except Exception:
+        pass
     with me.box(style=page_container_style()):
-        me.text("Deep Video Translation with Smart Segmentation", type="headline-5")
-        me.text("Mesop 網頁版 GUI（與 tkinter 版欄位一致）", type="body-2")
+        me.text("Deep Video Translation", type="headline-5")      
 
         # API Key
         with me.box(style=row_gap_style()):
@@ -276,38 +669,41 @@ def page():
                     label="拖拽或點擊上傳 MP4", 
                     on_upload=on_upload, 
                     multiple=False,
-                    accepted_file_types=[".mp4"]
+                    accepted_file_types=[".mp4","video/mp4"]
                 )
             if state.input_path:
                 me.text(f"已選擇：{state.uploaded_file_name}", type="body-2")
 
-        # 語音翻譯語言
-        with me.box(style=row_gap_style()):
-            me.text("語音翻譯語言:", style=form_label_style())
-            options = [
-                me.SelectOption(label="日文", value="日文"),
-                me.SelectOption(label="英文", value="英文"),
-                me.SelectOption(label="中文", value="中文"),
-            ]
-            me.select(
-                value=state.language,
-                options=options,
-                on_selection_change=on_language_change,
-            )
-
-        # 投影片翻譯開關
-        with me.box(style=row_gap_style()):
-            me.checkbox(
-                label="啟用投影片文字翻譯",
-                checked=state.slide_enabled,
-                on_change=on_slide_enabled_change,
-            )
-
-        # 投影片翻譯設定
-        if state.slide_enabled:
-            with me.box(style=slide_frame_style()):
-                with me.box():
-                    me.text("投影片翻譯語言:", style=form_label_style())
+        # 語音/投影片/段落/門檻 一排設計
+        with me.box(style=me.Style(
+            display="flex",
+            flex_direction="row",
+            gap="24px",
+            align_items="center",
+            justify_content="center",
+            margin=me.Margin(top="16px", right="0", bottom="0", left="0"),
+            padding=me.Padding(top="16px", right="16px", bottom="16px", left="16px"),
+            background="#f7f7fa",
+            border_radius="12px",
+            box_shadow="0 2px 8px rgba(0,0,0,0.04)"
+        )):
+            # 語音翻譯語言
+            with me.box(style=me.Style(min_width="160px")):
+                me.text("語音翻譯語言", style=form_label_style())
+                options = [
+                    me.SelectOption(label="日文", value="日文"),
+                    me.SelectOption(label="英文", value="英文"),
+                    me.SelectOption(label="中文", value="中文"),
+                ]
+                me.select(
+                    value=state.language,
+                    options=options,
+                    on_selection_change=on_language_change,
+                )
+            # 投影片翻譯語言
+            if state.slide_enabled:
+                with me.box(style=me.Style(min_width="160px")):
+                    me.text("投影片翻譯語言", style=form_label_style())
                     slide_options = [
                         me.SelectOption(label="Japanese", value="Japanese"),
                         me.SelectOption(label="English", value="English"),
@@ -318,22 +714,31 @@ def page():
                         options=slide_options,
                         on_selection_change=on_slide_language_change,
                     )
-                
-                with me.box(style=row_gap_style()):
-                    me.text("最小段落長度(秒):", style=form_label_style())
-                    me.input(
-                        value=state.min_segment_duration,
-                        on_input=on_min_segment_change,
-                        type="number"
-                    )
-                
-                with me.box(style=row_gap_style()):
-                    me.text("場景切換門檻:", style=form_label_style())
-                    me.input(
-                        value=state.hash_threshold,
-                        on_input=on_hash_threshold_change,
-                        type="number"
-                    )
+            # 最小段落長度(秒)
+            with me.box(style=me.Style(min_width="140px")):
+                me.text("最小段落長度(秒)", style=form_label_style())
+                me.input(
+                    value=state.min_segment_duration,
+                    on_input=on_min_segment_change,
+                    type="number",
+                    style=me.Style(width="100px")
+                )
+            # 場景切換門檻
+            with me.box(style=me.Style(min_width="140px")):
+                me.text("場景切換門檻", style=form_label_style())
+                me.input(
+                    value=state.hash_threshold,
+                    on_input=on_hash_threshold_change,
+                    type="number",
+                    style=me.Style(width="100px")
+                )
+        # 投影片翻譯開關
+        with me.box(style=row_gap_style()):
+            me.checkbox(
+                label="啟用投影片文字翻譯",
+                checked=state.slide_enabled,
+                on_change=on_slide_enabled_change,
+            )
 
         # 輸出文件
         with me.box(style=row_gap_style()):
@@ -346,20 +751,94 @@ def page():
 
         # 進度條
         with me.box(style=row_gap_style()):
-            me.progress_bar(value=state.progress)
+            me.progress_bar(mode="determinate", value=float(current_progress))
+            me.text(f"{current_progress}%", type="body-2")
 
         # 開始按鈕
         with me.box(style=row_gap_style()):
-            me.button(
-                "開始", 
-                on_click=start_processing, 
-                disabled=state.running,
-                type="raised"
-            )
+            me.button("開始", on_click=start_processing, disabled=is_running, type="raised")
 
         # 狀態
         with me.box(style=row_gap_style()):
-            me.text(state.status, style=me.Style(color="#666666"))
+            me.text(current_status, style=me.Style(color="#666666"))
+        
+        # 終端風格的日誌顯示區域
+        if current_logs or is_running:
+            with me.box(style=me.Style(
+                margin=me.Margin(top="24px", right="0", bottom="0", left="0"),
+                text_align="left"
+            )):
+                # 標題和刷新按鈕
+                with me.box(style=me.Style(
+                    display="flex",
+                    flex_direction="row",
+                    justify_content="space-between",
+                    align_items="center",
+                    margin=me.Margin(top="0", right="0", bottom="12px", left="0")
+                )):
+                    me.text("🖥️ 處理日誌 (即時更新)", style=me.Style(
+                        font_weight="bold",
+                        font_size="16px",
+                        text_align="left"
+                    ))
+                    if is_running:
+                        me.button(
+                            "🔄 刷新", 
+                            on_click=refresh_logs,
+                            type="flat",
+                            style=me.Style(
+                                font_size="12px",
+                                color="#666666"
+                            )
+                        )
+                
+                with me.box(style=terminal_style()):
+                    if current_logs:
+                        log_text = '\n'.join(current_logs)
+                        me.text(log_text, style=me.Style(
+                            white_space="pre-wrap",
+                            font_family="'Menlo', 'Monaco', 'Courier New', monospace",
+                            font_size="12px",
+                            line_height="1.6",
+                            color="#d4d4d4"
+                        ))
+                    else:
+                        me.text("等待處理開始...", style=me.Style(
+                            color="#888888",
+                            font_style="italic",
+                            font_family="'Menlo', 'Monaco', 'Courier New', monospace"
+                        ))
+                
+                # 如果正在處理中，顯示提示
+                if is_running:
+                    me.text("💡 提示：點擊「刷新」按鈕或重新載入頁面以查看最新日誌", style=me.Style(
+                        font_size="12px",
+                        color="#888888",
+                        margin=me.Margin(top="8px", right="0", bottom="0", left="0"),
+                        font_style="italic"
+                    ))
+
+        # 完成提示（Toast）
+        if state.show_done:
+            with me.box(style=me.Style(
+                position="fixed",
+                top="20px",
+                right="20px",
+                z_index="1000",
+                background="#111827",
+                color="#ffffff",
+                border_radius="10px",
+                box_shadow="0 10px 20px rgba(0,0,0,0.25)",
+                padding=me.Padding(top="12px", right="16px", bottom="12px", left="16px"),
+            )):
+                me.text("✅ 處理完成", type="subtitle-2")
+                me.text(state.done_message, type="body-2")
+                me.button("關閉", on_click=_close_done, type="stroked")
+
+
+def _close_done(e: me.ClickEvent):
+    state = me.state(AppState)
+    state.show_done = False
 
 
 # 允許直接以 `python mesopgui.py` 啟動（不依賴 `python -m mesop` 或 shell 腳本）

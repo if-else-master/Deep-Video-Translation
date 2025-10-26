@@ -1,9 +1,12 @@
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
 import os
 import sys
 import threading
 import urllib.request
+import uuid
+import time
+from datetime import datetime
+import queue
+import json
 
 # 添加 Wav2Lip 目錄到 Python 路徑
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Wav2Lip'))
@@ -22,86 +25,67 @@ import requests
 import re
 import subprocess
 
+# Flask 相關
+from flask import Flask, request, jsonify, render_template, Response, send_file
+from werkzeug.utils import secure_filename
+
+# 創建 Flask 應用
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
+app.config['UPLOAD_FOLDER'] = 'temp/uploads'
+
+# 任務狀態管理
+tasks = {}
+task_logs = {}
+task_progress = {}
+
+
+class VideoProcessingTask:
+    """影片處理任務類"""
+    def __init__(self, task_id, params):
+        self.task_id = task_id
+        self.params = params
+        self.status = 'pending'
+        self.progress = 0
+        self.error = None
+        self.output_path = None
+        self.log_queue = queue.Queue()
+        
+    def log(self, message, level='info'):
+        """添加日誌"""
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        log_entry = {
+            'timestamp': timestamp,
+            'message': message,
+            'level': level
+        }
+        self.log_queue.put(log_entry)
+        print(f"[{timestamp}] {message}")
+        
+    def update_progress(self, progress, status=None):
+        """更新進度"""
+        self.progress = progress
+        if status:
+            self.status = status
+        task_progress[self.task_id] = {
+            'progress': progress,
+            'status': self.status
+        }
+
+
 class DeepVideoTranslationApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Deep Video Translation with Smart Segmentation")
-        self.root.geometry("1000x800")
-        
-        # 設置字體路徑
+    """影片翻譯處理核心類"""
+    
+    def __init__(self, task=None):
+        """初始化處理器"""
+        self.task = task
         self.setup_fonts()
-        
-        # 確保基本目錄存在
         self.ensure_basic_directories()
         
-        # 創建主框架
-        main_frame = ttk.Frame(root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # API Key 輸入
-        ttk.Label(main_frame, text="Gemini API Key:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.api_key_var = tk.StringVar()
-        ttk.Entry(
-            main_frame,
-            textvariable=self.api_key_var,
-            width=50,
-            show="*"
-        ).grid(row=0, column=1, columnspan=2, sticky=tk.W, pady=5)        
-        # 輸入影片選擇
-        ttk.Label(main_frame, text="輸入影片:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.input_path_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.input_path_var, width=50).grid(row=1, column=1, sticky=tk.W, pady=5)
-        ttk.Button(main_frame, text="瀏覽", command=self.browse_input).grid(row=1, column=2, padx=5)
-        
-        # 語音翻譯語言選擇
-        ttk.Label(main_frame, text="語音翻譯語言:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        self.language_var = tk.StringVar(value="日文")
-        language_combo = ttk.Combobox(main_frame, textvariable=self.language_var, values=["日文", "英文", "中文"], width=47)
-        language_combo.grid(row=2, column=1, sticky=tk.W, pady=5)
-        
-        # 投影片翻譯選項
-        self.slide_translation_var = tk.BooleanVar(value=True)
-        slide_check = tk.Checkbutton(main_frame, text="啟用投影片文字翻譯", variable=self.slide_translation_var, command=self.toggle_slide_options)
-        slide_check.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
-        
-        # 投影片翻譯參數框架
-        self.slide_frame = ttk.LabelFrame(main_frame, text="投影片翻譯設定", padding="5")
-        self.slide_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
-        
-        # 投影片翻譯語言
-        ttk.Label(self.slide_frame, text="投影片翻譯語言:").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.slide_language_var = tk.StringVar(value="Japanese")
-        slide_lang_combo = ttk.Combobox(self.slide_frame, textvariable=self.slide_language_var, 
-                                       values=["Japanese", "English", "Chinese"], width=20)
-        slide_lang_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
-        
-        # 分段參數設定
-        ttk.Label(self.slide_frame, text="最小段落長度(秒):").grid(row=0, column=2, sticky=tk.W, padx=5)
-        self.min_segment_duration_var = tk.StringVar(value="2")
-        ttk.Entry(self.slide_frame, textvariable=self.min_segment_duration_var, width=10).grid(row=0, column=3, padx=5)
-        
-        # Hash 差異門檻
-        ttk.Label(self.slide_frame, text="場景切換門檻:").grid(row=1, column=0, sticky=tk.W, padx=5)
-        self.hash_threshold_var = tk.StringVar(value="5")
-        ttk.Entry(self.slide_frame, textvariable=self.hash_threshold_var, width=10).grid(row=1, column=1, padx=5)
-        
-        # 輸出文件選擇
-        ttk.Label(main_frame, text="輸出文件:").grid(row=5, column=0, sticky=tk.W, pady=5)
-        self.output_path_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.output_path_var, width=50).grid(row=5, column=1, sticky=tk.W, pady=5)
-        ttk.Button(main_frame, text="瀏覽", command=self.browse_output).grid(row=5, column=2, padx=5)
-        
-        # 進度條
-        self.progress = ttk.Progressbar(main_frame, length=300, mode='determinate')
-        self.progress.grid(row=6, column=0, columnspan=3, pady=20)
-        
-        # 開始按鈕
-        ttk.Button(main_frame, text="開始", command=self.process).grid(row=7, column=0, columnspan=3, pady=10)
-        
-        # 狀態標籤
-        self.status_var = tk.StringVar()
-        self.status_var.set("準備就緒")
-        ttk.Label(main_frame, textvariable=self.status_var).grid(row=8, column=0, columnspan=3, pady=5)
+        # 設置參數
+        self.api_key = None
+        self.min_segment_duration = 2
+        self.hash_threshold = 5
 
     def setup_fonts(self):
         """設置字體路徑，使用本地的 Noto 字體"""
@@ -185,35 +169,22 @@ class DeepVideoTranslationApp:
         # 太少邊緣可能是空白，太多邊緣可能是雜亂背景
         return 0.01 < edge_ratio < 0.3
 
-    def toggle_slide_options(self):
-        """切換投影片選項顯示/隱藏"""
-        if self.slide_translation_var.get():
-            self.slide_frame.grid()
+    def log(self, message, level='info'):
+        """記錄日誌"""
+        if self.task:
+            self.task.log(message, level)
         else:
-            self.slide_frame.grid_remove()
-
-    def browse_input(self):
-        filename = filedialog.askopenfilename(
-            filetypes=[("Video files", "*.mp4")]
-        )
-        if filename:
-            self.input_path_var.set(filename)
-            # 自動設置輸出路徑
-            base_name = os.path.splitext(filename)[0]
-            self.output_path_var.set(f"{base_name}_translated.mp4")
-
-    def browse_output(self):
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".mp4",
-            filetypes=[("MP4 files", "*.mp4")]
-        )
-        if filename:
-            self.output_path_var.set(filename)
+            print(message)
+    
+    def update_progress(self, progress, status=None):
+        """更新進度"""
+        if self.task:
+            self.task.update_progress(progress, status)
 
     # 投影片翻譯功能
     def translate_with_gemini(self, text, target_lang="Japanese"):
         """使用 Gemini API 翻譯文字"""
-        api_key = self.api_key_var.get()
+        api_key = self.api_key
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
         headers = {"Content-Type": "application/json"}
         
@@ -365,8 +336,8 @@ class DeepVideoTranslationApp:
         os.makedirs(slides_dir, exist_ok=True)
         os.makedirs(translated_dir, exist_ok=True)
 
-        frame_interval = int(self.frame_interval_var.get())
-        hash_threshold = int(self.hash_threshold_var.get())
+        frame_interval = 10  # 固定值
+        hash_threshold = self.hash_threshold
 
         cap = cv2.VideoCapture(video_path)
         frame_count = 0
@@ -412,17 +383,16 @@ class DeepVideoTranslationApp:
             # 更新進度
             if frame_count % 100 == 0:
                 progress = int((frame_count / total_frames) * 30) + 70  # 70-100% 的進度區間
-                self.progress['value'] = progress
-                self.root.update()
+                self.update_progress(progress)
 
         cap.release()
-        print(f"總共處理了 {processed_slides} 張投影片")
+        self.log(f"總共處理了 {processed_slides} 張投影片")
         return translated_dir, slide_frame_mapping
 
     def create_translated_video(self, original_video, translated_slides_dir, slide_frame_mapping, output_path, audio_path):
         """將翻譯後的投影片合成到影片中，並確保音頻正確"""
-        frame_interval = int(self.frame_interval_var.get())
-        hash_threshold = int(self.hash_threshold_var.get())
+        frame_interval = 10  # 固定值
+        hash_threshold = self.hash_threshold
         
         # 讀取翻譯後的投影片
         translated_slides = {}
@@ -670,7 +640,7 @@ class DeepVideoTranslationApp:
 
     def analyze_and_segment_video(self, video_path):
         """分析影片並智能分段，分離人臉和簡報片段"""
-        print("🔍 開始分析影片內容並進行智能分段...")
+        self.log("🔍 開始分析影片內容並進行智能分段...")
         
         # 創建輸出目錄
         face_dir = "temp/faceai"
@@ -684,12 +654,12 @@ class DeepVideoTranslationApp:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        min_duration = float(self.min_segment_duration_var.get())
+        min_duration = self.min_segment_duration
         min_frames = int(fps * min_duration)
-        hash_threshold = int(self.hash_threshold_var.get())
+        hash_threshold = self.hash_threshold
         
         # 第一步：分析整個影片的內容類型
-        print("📊 正在分析影片內容類型...")
+        self.log("📊 正在分析影片內容類型...")
         segments = []
         current_segment = None
         frame_count = 0
@@ -748,8 +718,7 @@ class DeepVideoTranslationApp:
             # 更新進度
             if frame_count % 100 == 0:
                 progress = int((frame_count / total_frames) * 20)  # 分析階段占20%進度
-                self.progress['value'] = progress
-                self.root.update()
+                self.update_progress(progress)
         
         # 添加最後一個段落
         if current_segment and len(current_segment['frames']) >= min_frames:
@@ -757,11 +726,11 @@ class DeepVideoTranslationApp:
         
         cap.release()
         
-        print(f"📋 分析完成，找到 {len(segments)} 個段落:")
+        self.log(f"📋 分析完成，找到 {len(segments)} 個段落:")
         face_segments = [s for s in segments if s['type'] == 'face']
         slide_segments = [s for s in segments if s['type'] == 'slide']
-        print(f"   👤 人臉段落: {len(face_segments)}")
-        print(f"   📊 簡報段落: {len(slide_segments)}")
+        self.log(f"   👤 人臉段落: {len(face_segments)}")
+        self.log(f"   📊 簡報段落: {len(slide_segments)}")
         
         # 第二步：提取並儲存段落
         self.extract_segments(video_path, segments, face_dir, ppt_dir)
@@ -854,7 +823,7 @@ class DeepVideoTranslationApp:
 
     def extract_segments(self, video_path, segments, face_dir, ppt_dir):
         """提取並儲存影片段落，每個段落包含完整的音視頻"""
-        print("✂️ 正在提取影片段落...")
+        self.log("✂️ 正在提取影片段落...")
         
         # 獲取視頻信息
         cap = cv2.VideoCapture(video_path)
@@ -884,19 +853,18 @@ class DeepVideoTranslationApp:
             # 提取段落（包含音視頻）
             self.extract_video_segment(cap, start_frame, end_frame, output_path, fps, width, height, video_path)
             
-            print(f"💾 已提取 {segment_type} 段落: {filename} (幀 {start_frame}-{end_frame})")
+            self.log(f"💾 已提取 {segment_type} 段落: {filename} (幀 {start_frame}-{end_frame})")
             
             # 更新進度
             progress = 20 + int((i / len(segments)) * 20)  # 提取階段占20-40%進度
-            self.progress['value'] = progress
-            self.root.update()
+            self.update_progress(progress)
         
         cap.release()
-        print(f"✅ 段落提取完成: {face_count-1} 個人臉段落, {slide_count-1} 個簡報段落")
+        self.log(f"✅ 段落提取完成: {face_count-1} 個人臉段落, {slide_count-1} 個簡報段落")
 
     def process_face_segments(self, face_dir, language):
         """處理人臉段落：音頻提取、翻譯、嘴形同步"""
-        print("👤 開始處理人臉段落...")
+        self.log("👤 開始處理人臉段落...")
         
         # 確保目錄存在
         self.ensure_directory_exists(face_dir)
@@ -905,15 +873,15 @@ class DeepVideoTranslationApp:
         processed_segments = []
         
         for i, filename in enumerate(face_files):
-            print(f"🎭 處理人臉段落 {filename}...")
+            self.log(f"🎭 處理人臉段落 {filename}...")
             
             input_path = os.path.join(face_dir, filename)
             base_name = os.path.splitext(filename)[0]
             
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
-                print(f"  🎵 正在處理音頻...")
-                api_key = self.api_key_var.get()
+                self.log(f"  🎵 正在處理音頻...")
+                api_key = self.api_key
                 
                 try:
                     translated_text = voice(input_path, api_key, language)
@@ -991,14 +959,13 @@ class DeepVideoTranslationApp:
             
             # 更新進度
             progress = 40 + int((i / len(face_files)) * 30)  # 人臉處理階段占40-70%進度
-            self.progress['value'] = progress
-            self.root.update()
+            self.update_progress(progress)
         
         return processed_segments
 
     def process_slide_segments(self, ppt_dir, language, slide_language):
         """處理簡報段落：音頻提取、翻譯、OCR翻譯"""
-        print("📊 開始處理簡報段落...")
+        self.log("📊 開始處理簡報段落...")
         
         # 確保目錄存在
         self.ensure_directory_exists(ppt_dir)
@@ -1007,15 +974,15 @@ class DeepVideoTranslationApp:
         processed_segments = []
         
         for i, filename in enumerate(ppt_files):
-            print(f"📋 處理簡報段落 {filename}...")
+            self.log(f"📋 處理簡報段落 {filename}...")
             
             input_path = os.path.join(ppt_dir, filename)
             base_name = os.path.splitext(filename)[0]
             
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
-                print(f"  🎵 正在處理音頻...")
-                api_key = self.api_key_var.get()
+                self.log(f"  🎵 正在處理音頻...")
+                api_key = self.api_key
                 
                 try:
                     translated_text = voice(input_path, api_key, language)
@@ -1062,8 +1029,7 @@ class DeepVideoTranslationApp:
             
             # 更新進度
             progress = 70 + int((i / len(ppt_files)) * 20)  # 簡報處理階段占70-90%進度
-            self.progress['value'] = progress
-            self.root.update()
+            self.update_progress(progress)
         
         return processed_segments
 
@@ -1094,7 +1060,7 @@ class DeepVideoTranslationApp:
         frame_count = 0
         prev_hash = None
         current_translated_frame = None
-        hash_threshold = int(self.hash_threshold_var.get())
+        hash_threshold = self.hash_threshold
         translated_frame_count = 0
         
         print(f"  🔍 開始逐幀處理OCR翻譯...")
@@ -1496,48 +1462,45 @@ class DeepVideoTranslationApp:
         
         print(f"  ✅ 逐個合併完成")
 
-    def process(self):
-        # 獲取輸入值
-        api_key = self.api_key_var.get()
-        input_path = self.input_path_var.get()
-        language = self.language_var.get()
-        output_path = self.output_path_var.get()
-        enable_slide_translation = self.slide_translation_var.get()
+    def process(self, input_path, output_path, api_key, language, slide_language, 
+                enable_slide_translation, min_segment_duration, hash_threshold):
+        """處理影片的主要方法"""
+        # 設置參數
+        self.api_key = api_key
+        self.min_segment_duration = min_segment_duration
+        self.hash_threshold = hash_threshold
         
         # 驗證輸入
         if not all([api_key, input_path, output_path]):
-            messagebox.showerror("錯誤", "請填寫所有必要欄位")
-            return
+            raise ValueError("請填寫所有必要欄位")
             
         if not input_path.lower().endswith('.mp4'):
-            messagebox.showerror("錯誤", "請選擇MP4格式的影片文件")
-            return
+            raise ValueError("請選擇MP4格式的影片文件")
         
         try:
             # 確保所有必要的目錄存在
             self.ensure_basic_directories()
             
             # 更新狀態
-            self.status_var.set("正在進行智能分段分析...")
-            self.progress['value'] = 0
-            self.root.update()
+            self.log("正在進行智能分段分析...")
+            self.update_progress(0, "正在進行智能分段分析...")
             
             # 步驟1：分析並分段影片
             segments_info = self.analyze_and_segment_video(input_path)
             
             if not segments_info:
-                messagebox.showerror("錯誤", "無法分析影片內容，請確認影片格式正確")
-                return
+                raise ValueError("無法分析影片內容，請確認影片格式正確")
             
             # 步驟2：處理人臉段落
-            self.status_var.set("正在處理人臉段落...")
+            self.log("正在處理人臉段落...")
+            self.update_progress(40, "正在處理人臉段落...")
             face_segments = self.process_face_segments("temp/faceai", language)
             
             # 步驟3：處理簡報段落
             processed_slide_segments = []
             if enable_slide_translation:
-                self.status_var.set("正在處理簡報段落...")
-                slide_language = self.slide_language_var.get()
+                self.log("正在處理簡報段落...")
+                self.update_progress(70, "正在處理簡報段落...")
                 processed_slide_segments = self.process_slide_segments("temp/pptai", language, slide_language)
             else:
                 # 如果不啟用簡報翻譯，直接處理音頻但不翻譯投影片內容
@@ -1552,14 +1515,14 @@ class DeepVideoTranslationApp:
                     processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
                     
                     try:
-                        print(f"📋 處理簡報音頻 {filename}...")
+                        self.log(f"📋 處理簡報音頻 {filename}...")
                         # 處理音頻（直接使用段落文件，因為已包含音頻）
-                        api_key = self.api_key_var.get()
+                        current_api_key = self.api_key
                         
                         try:
-                            translated_text = voice(input_path_seg, api_key, language)
+                            translated_text = voice(input_path_seg, current_api_key, language)
                         except Exception as audio_error:
-                            print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
+                            self.log(f"  ⚠️ 音頻轉文字失敗: {audio_error}", 'warning')
                             translated_text = ""
                         
                         if translated_text and translated_text.strip():
@@ -1600,27 +1563,23 @@ class DeepVideoTranslationApp:
                     
                     # 更新進度
                     progress = 70 + int((j / len(ppt_files)) * 20)
-                    self.progress['value'] = progress
-                    self.root.update()
+                    self.update_progress(progress)
             
             # 步驟4：自動剪接
-            self.status_var.set("正在進行自動剪接...")
-            self.progress['value'] = 90
-            self.root.update()
+            self.log("正在進行自動剪接...")
+            self.update_progress(90, "正在進行自動剪接...")
             
             self.auto_edit_segments(face_segments, processed_slide_segments, segments_info, output_path)
             
-            self.progress['value'] = 100
-            self.status_var.set("處理完成！")
-            messagebox.showinfo("完成", f"智能分段處理已完成！\n輸出文件：{output_path}")
+            self.update_progress(100, "處理完成！")
+            self.log(f"✅ 智能分段處理已完成！輸出文件：{output_path}", 'success')
             
         except Exception as e:
-            messagebox.showerror("錯誤", f"處理過程中發生錯誤：{str(e)}")
-            self.status_var.set("處理失敗")
-            self.progress['value'] = 0
-            print(f"詳細錯誤信息: {e}")
+            self.log(f"❌ 處理過程中發生錯誤：{str(e)}", 'error')
+            self.update_progress(0, "處理失敗")
             import traceback
             traceback.print_exc()
+            raise
 
     def ensure_basic_directories(self):
         """確保所有必要的基本目錄都存在"""
@@ -1645,10 +1604,283 @@ class DeepVideoTranslationApp:
             print(f"📁 創建目錄: {directory_path}")
         return directory_path
 
-def main():
-    root = tk.Tk()
-    app = DeepVideoTranslationApp(root)
-    root.mainloop()
+# Flask 路由
+
+@app.route('/')
+def home():
+    """首頁"""
+    return render_template('index.html')
+
+
+@app.route('/get_home_dir')
+def get_home_dir():
+    """獲取用戶主目錄"""
+    home_dir = os.path.expanduser('~')
+    return jsonify({'home_dir': home_dir})
+
+
+@app.route('/process', methods=['POST'])
+def process_video():
+    """處理影片的 API 端點"""
+    try:
+        # 檢查文件是否存在
+        if 'video' not in request.files:
+            return jsonify({'error': '沒有上傳影片'}), 400
+        
+        video_file = request.files['video']
+        
+        if video_file.filename == '':
+            return jsonify({'error': '沒有選擇影片'}), 400
+        
+        # 獲取參數
+        api_key = request.form.get('api_key')
+        voice_language = request.form.get('voice_language', '日文')
+        slide_language = request.form.get('slide_language', 'Japanese')
+        enable_slide_translation = request.form.get('enable_slide_translation', 'true').lower() == 'true'
+        min_segment_duration = float(request.form.get('min_segment_duration', 2))
+        hash_threshold = int(request.form.get('hash_threshold', 5))
+        custom_output_filename = request.form.get('output_filename', '').strip()
+        output_directory = request.form.get('output_directory', 'audio_files').strip()
+        
+        # 保存上傳的影片
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        filename = secure_filename(video_file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        video_file.save(input_path)
+        
+        # 設置輸出路徑
+        base_name = os.path.splitext(filename)[0]
+        
+        # 清理並驗證輸出目錄
+        if not output_directory:
+            output_directory = 'audio_files'
+        
+        # 標準化路徑分隔符
+        output_directory = output_directory.replace('\\', '/')
+        
+        # 檢查是否為絕對路徑
+        is_absolute = output_directory.startswith('/')
+        
+        # 移除危險的 .. 路徑遍歷（但保留絕對路徑的開頭斜杠）
+        if not is_absolute:
+            output_directory = output_directory.replace('..', '').strip('/')
+            if not output_directory:
+                output_directory = 'audio_files'
+        else:
+            # 對於絕對路徑，只移除 ..，但不去除前導斜杠
+            output_directory = output_directory.replace('..', '')
+        
+        # 使用自定義文件名或默認文件名
+        if custom_output_filename:
+            # 確保文件名有 .mp4 擴展名
+            if not custom_output_filename.lower().endswith('.mp4'):
+                output_filename = f"{custom_output_filename}.mp4"
+            else:
+                output_filename = custom_output_filename
+            output_filename = secure_filename(output_filename)
+        else:
+            output_filename = f"{base_name}_translated.mp4"
+        
+        # 創建輸出目錄並設置完整路徑
+        output_path = os.path.join(output_directory, output_filename)
+        
+        # 確保輸出目錄存在
+        try:
+            os.makedirs(output_directory, exist_ok=True)
+        except Exception as e:
+            return jsonify({'error': f'無法創建輸出目錄：{str(e)}'}), 400
+        
+        # 創建任務
+        task_id = str(uuid.uuid4())
+        params = {
+            'input_path': input_path,
+            'output_path': output_path,
+            'api_key': api_key,
+            'voice_language': voice_language,
+            'slide_language': slide_language,
+            'enable_slide_translation': enable_slide_translation,
+            'min_segment_duration': min_segment_duration,
+            'hash_threshold': hash_threshold
+        }
+        
+        task = VideoProcessingTask(task_id, params)
+        tasks[task_id] = task
+        
+        # 在新線程中處理影片
+        thread = threading.Thread(target=process_video_task, args=(task_id,))
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'task_id': task_id,
+            'message': '任務已建立'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+def process_video_task(task_id):
+    """在背景處理影片的任務"""
+    task = tasks.get(task_id)
+    if not task:
+        return
+    
+    try:
+        task.status = 'processing'
+        task.progress = 0
+        task.log('🚀 開始處理影片...', 'info')
+        task.log('📥 正在初始化處理器...', 'info')
+        
+        # 創建處理器實例
+        processor = DeepVideoTranslationApp(task)
+        
+        # 執行處理
+        params = task.params
+        processor.process(
+            input_path=params['input_path'],
+            output_path=params['output_path'],
+            api_key=params['api_key'],
+            language=params['voice_language'],
+            slide_language=params['slide_language'],
+            enable_slide_translation=params['enable_slide_translation'],
+            min_segment_duration=params['min_segment_duration'],
+            hash_threshold=params['hash_threshold']
+        )
+        
+        task.status = 'completed'
+        task.output_path = params['output_path']
+        task.log('處理完成！', 'success')
+        
+    except Exception as e:
+        task.status = 'failed'
+        task.error = str(e)
+        task.log(f'處理失敗: {str(e)}', 'error')
+        import traceback
+        traceback.print_exc()
+
+
+@app.route('/progress/<task_id>')
+def progress(task_id):
+    """使用 Server-Sent Events 推送進度和日誌"""
+    def generate():
+        task = tasks.get(task_id)
+        if not task:
+            data = {'error': '任務不存在'}
+            yield f"data: {json.dumps(data)}\n\n"
+            return
+        
+        # 立即發送初始連接消息
+        initial_data = {
+            'log': '⏳ 已連接到服務器，等待任務開始...',
+            'progress': 0,
+            'status': 'pending'
+        }
+        yield f"data: {json.dumps(initial_data)}\n\n"
+        
+        last_progress = -1
+        heartbeat_counter = 0
+        
+        while True:
+            try:
+                has_update = False
+                
+                # 發送日誌
+                while not task.log_queue.empty():
+                    log_entry = task.log_queue.get_nowait()
+                    data = {
+                        'log': log_entry['message'],
+                        'progress': task.progress,
+                        'status': task.status
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    has_update = True
+                
+                # 發送進度更新
+                if task.progress != last_progress:
+                    last_progress = task.progress
+                    data = {
+                        'progress': task.progress,
+                        'status': task.status
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    has_update = True
+                
+                # 如果任務完成或失敗，發送最終消息
+                if task.status == 'completed':
+                    data = {
+                        'progress': 100,
+                        'status': 'completed',
+                        'output_url': f'/download/{task_id}',
+                        'log': '✅ 處理完成！'
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    break
+                elif task.status == 'failed':
+                    data = {
+                        'progress': task.progress,
+                        'status': 'failed',
+                        'error': task.error or '未知錯誤',
+                        'log': f'❌ 處理失敗: {task.error or "未知錯誤"}'
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    break
+                
+                # 每5秒發送一次心跳，保持連接活躍
+                heartbeat_counter += 1
+                if heartbeat_counter >= 10:  # 0.5s * 10 = 5s
+                    data = {
+                        'heartbeat': True,
+                        'progress': task.progress,
+                        'status': task.status
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    heartbeat_counter = 0
+                
+                time.sleep(0.5)  # 每0.5秒檢查一次
+                
+            except GeneratorExit:
+                print(f"Client disconnected from task {task_id}")
+                break
+            except Exception as e:
+                print(f"Progress stream error for task {task_id}: {e}")
+                import traceback
+                traceback.print_exc()
+                break
+    
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Connection'] = 'keep-alive'
+    return response
+
+
+@app.route('/download/<task_id>')
+def download(task_id):
+    """下載處理後的影片"""
+    task = tasks.get(task_id)
+    if not task or not task.output_path:
+        return jsonify({'error': '文件不存在'}), 404
+    
+    if not os.path.exists(task.output_path):
+        return jsonify({'error': '輸出文件不存在'}), 404
+    
+    return send_file(
+        task.output_path,
+        as_attachment=True,
+        download_name=os.path.basename(task.output_path),
+        mimetype='video/mp4'
+    )
+
 
 if __name__ == "__main__":
-    main()
+    # 確保必要的目錄存在
+    os.makedirs('temp/uploads', exist_ok=True)
+    os.makedirs('audio_files', exist_ok=True)
+    
+    # 啟動 Flask 應用
+    print("🚀 Deep Video Translation 服務啟動中...")
+    print("📍 請在瀏覽器中打開: http://localhost:32123")
+    app.run(debug=True, host='0.0.0.0', port=32123, threaded=True)

@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Video Translation - AI 影片智能翻譯系統</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+            font-size: 0.95em;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="password"],
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 20px;
+            padding: 60px 20px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .upload-area.dragover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+            border-color: #764ba2;
+            transform: scale(1.02);
+        }
+
+        .upload-area:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.7;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        .upload-subtext {
+            font-size: 0.9em;
+            color: #999;
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0f8ff;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+
+        .file-info.show {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            cursor: pointer;
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .advanced-settings {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+        }
+
+        .advanced-settings.show {
+            max-height: 500px;
+            padding: 20px;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+
+        .progress-container.show {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .progress-label {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #555;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .log-container {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            border-radius: 10px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #00ff00;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .log-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-container::-webkit-scrollbar-track {
+            background: #2a2a2a;
+            border-radius: 10px;
+        }
+
+        .log-container::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .log-line {
+            margin-bottom: 5px;
+            line-height: 1.4;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .log-line.error {
+            color: #ff6b6b;
+        }
+
+        .log-line.success {
+            color: #51cf66;
+        }
+
+        .log-line.warning {
+            color: #ffd93d;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .status-badge.ready {
+            background: #51cf66;
+            color: white;
+        }
+
+        .status-badge.processing {
+            background: #667eea;
+            color: white;
+        }
+
+        .status-badge.error {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .result-container {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(81, 207, 102, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%);
+            border-radius: 15px;
+            border: 2px solid #51cf66;
+        }
+
+        .result-container.show {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .result-container h3 {
+            color: #51cf66;
+            margin-bottom: 15px;
+        }
+
+        .download-btn {
+            background: #51cf66;
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .download-btn:hover {
+            background: #40b856;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .content {
+                padding: 20px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AI 深度影片翻譯服務</h1>
+            
+        </div>
+
+        <div class="content">
+            <form id="translationForm">
+                <!-- API Key -->
+                <div class="form-group">
+                    <label for="apiKey">🔑 Gemini API Key</label>
+                    <input type="password" id="apiKey" name="api_key" placeholder="輸入您的 Gemini API Key" required>
+                </div>
+
+                <!-- 影片上傳區域 -->
+                <div class="form-group">
+                    <label>上傳影片</label>
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📤</div>
+                        <div class="upload-text">拖放影片到這裡或點擊上傳</div>
+                        <div class="upload-subtext">支持 MP4 格式</div>
+                    </div>
+                    <input type="file" id="videoFile" accept="video/mp4" required>
+                    <div class="file-info" id="fileInfo">
+                        <strong>已選擇：</strong> <span id="fileName"></span>
+                    </div>
+                </div>
+
+                <!-- 輸出目錄選擇 -->
+                <div class="form-group">
+                    <label>輸出目錄（輸入完整路徑）</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="outputDirectory" name="output_directory" value="audio_files" placeholder="例如: /Users/你的用戶名/Desktop/output" style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-family: monospace;">
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                        <button type="button" onclick="setOutputDir('${HOME}/Desktop')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
+                            🖥️ 桌面
+                        </button>
+                        <button type="button" onclick="setOutputDir('${HOME}/Documents')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
+                            📄 文件
+                        </button>
+                        <button type="button" onclick="setOutputDir('${HOME}/Downloads')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
+                            📥 下載
+                        </button>
+                        <button type="button" onclick="setOutputDir('audio_files')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
+                            🎵 audio_files
+                        </button>
+                    </div>
+                    <small style="color: #666; margin-top: 8px; display: block;">
+                        💡 輸入完整路徑或點擊快捷按鈕。例如：/Users/raychang/Desktop/我的影片
+                    </small>
+                </div>
+
+                <!-- 輸出文件名設置 -->
+                <div class="form-group">
+                    <label for="outputFileName">輸出文件名</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="outputFileName" name="output_filename" placeholder="留空則自動命名為: 原文件名_translated.mp4" style="flex: 1;">
+                        <button type="button" class="btn" onclick="generateFileName()" style="width: auto; padding: 12px 20px; background: linear-gradient(135deg, #51cf66 0%, #40b856 100%);">
+                            自動生成
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 完整輸出路徑顯示 -->
+                <div class="form-group">
+                    <label>完整輸出路徑</label>
+                    <div style="padding: 12px; background: #f0f0f0; border-radius: 8px; font-family: monospace; color: #333;">
+                        <span id="fullOutputPath">audio_files/原文件名_translated.mp4</span>
+                    </div>
+                    <small style="color: #666; margin-top: 5px; display: block;">
+                        處理完成後，文件將保存在此路徑
+                    </small>
+                </div>
+
+                <!-- 語音翻譯語言 -->
+                <div class="two-column">
+                    <div class="form-group">
+                        <label for="voiceLanguage">語音翻譯語言</label>
+                        <select id="voiceLanguage" name="voice_language" required>
+                            <option value="日文" selected>日文</option>
+                            <option value="英文">英文</option>
+                            <option value="中文">中文</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="slideLanguage">投影片翻譯語言</label>
+                        <select id="slideLanguage" name="slide_language">
+                            <option value="Japanese" selected>Japanese</option>
+                            <option value="English">English</option>
+                            <option value="Chinese">Chinese</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 投影片翻譯選項 -->
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableSlideTranslation" name="enable_slide_translation" checked>
+                    <label for="enableSlideTranslation">啟用投影片文字翻譯</label>
+                </div>
+
+                <!-- 進階設定 -->
+                <div class="advanced-settings" id="advancedSettings">
+                    <h3 style="margin-bottom: 15px;">進階設定</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="minSegmentDuration">最小段落長度 (秒)</label>
+                            <input type="number" id="minSegmentDuration" name="min_segment_duration" value="2" min="1" max="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="hashThreshold">場景切換門檻</label>
+                            <input type="number" id="hashThreshold" name="hash_threshold" value="5" min="1" max="20">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showAdvanced">
+                    <label for="showAdvanced">顯示進階設定</label>
+                </div>
+
+                <!-- 提交按鈕 -->
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    開始處理影片
+                </button>
+            </form>
+
+            <!-- 進度顯示區域 -->
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-label">
+                    <span id="statusText">準備中...</span>
+                    <span class="status-badge ready" id="statusBadge">就緒</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progressBar">0%</div>
+                </div>
+
+                <!-- 實時日誌 -->
+                <div class="log-container" id="logContainer"></div>
+            </div>
+
+            <!-- 結果顯示區域 -->
+            <div class="result-container" id="resultContainer">
+                <h3>✅ 處理完成！</h3>
+                <p>您的影片已成功處理完成。</p>
+                
+                <div style="margin-top: 15px; padding: 15px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 5px;">
+                    <strong style="color: #2e7d32;">📁 文件保存位置：</strong>
+                    <div style="margin-top: 8px; padding: 10px; background: white; border-radius: 5px; font-family: monospace; color: #333;">
+                        <span id="savedFilePath"></span>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 5px;">
+                    <strong>💡 下載說明：</strong>
+                    <ol style="margin: 10px 0 0 20px; color: #856404; line-height: 1.8;">
+                        <li>點擊下方的「下載到電腦」按鈕</li>
+                        <li><strong>瀏覽器會自動彈出文件保存對話框</strong></li>
+                        <li>在對話框中選擇您想要的保存位置（任意資料夾）</li>
+                        <li>可以在對話框中修改文件名</li>
+                        <li>點擊「保存」完成下載</li>
+                    </ol>
+                </div>
+                <button type="button" class="btn download-btn" id="downloadBtn" onclick="downloadFile()" style="margin-top: 20px; font-size: 1.1em; padding: 18px 30px;">
+                    下載到電腦
+                </button>
+                
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素
+        const uploadArea = document.getElementById('uploadArea');
+        const videoFile = document.getElementById('videoFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const translationForm = document.getElementById('translationForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const statusBadge = document.getElementById('statusBadge');
+        const logContainer = document.getElementById('logContainer');
+        const resultContainer = document.getElementById('resultContainer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const showAdvanced = document.getElementById('showAdvanced');
+        const advancedSettings = document.getElementById('advancedSettings');
+
+        // 進階設定切換
+        showAdvanced.addEventListener('change', function() {
+            if (this.checked) {
+                advancedSettings.classList.add('show');
+            } else {
+                advancedSettings.classList.remove('show');
+            }
+        });
+
+        // 拖放上傳功能
+        uploadArea.addEventListener('click', () => videoFile.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === 'video/mp4') {
+                videoFile.files = files;
+                displayFileName(files[0].name);
+            } else {
+                alert('請上傳 MP4 格式的影片文件');
+            }
+        });
+
+        videoFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                displayFileName(e.target.files[0].name);
+                updateFullOutputPath(); // 更新輸出路徑顯示
+            }
+        });
+
+        function displayFileName(name) {
+            fileName.textContent = name;
+            fileInfo.classList.add('show');
+        }
+
+        // 目錄選擇相關變量
+        const outputDirectoryInput = document.getElementById('outputDirectory');
+        const outputFileNameInput = document.getElementById('outputFileName');
+        const fullOutputPathSpan = document.getElementById('fullOutputPath');
+        let selectedDirectory = 'audio_files';
+        let userHomeDir = '';
+
+        // 獲取用戶主目錄
+        fetch('/get_home_dir')
+            .then(response => response.json())
+            .then(data => {
+                userHomeDir = data.home_dir;
+                console.log('用戶主目錄:', userHomeDir);
+            })
+            .catch(error => {
+                console.error('無法獲取主目錄:', error);
+                userHomeDir = '/Users/' + (prompt('請輸入您的用戶名（例如: raychang）') || 'username');
+            });
+
+        // 設置輸出目錄
+        function setOutputDir(path) {
+            // 替換 ${HOME} 為實際的用戶主目錄
+            const actualPath = path.replace('${HOME}', userHomeDir);
+            outputDirectoryInput.value = actualPath;
+            selectedDirectory = actualPath;
+            updateFullOutputPath();
+        }
+
+        // 輸入框變化時更新
+        outputDirectoryInput.addEventListener('input', function() {
+            selectedDirectory = this.value.trim() || 'audio_files';
+            updateFullOutputPath();
+        });
+
+        outputFileNameInput.addEventListener('input', updateFullOutputPath);
+
+        // 更新完整輸出路徑顯示
+        function updateFullOutputPath() {
+            const directory = outputDirectoryInput.value.trim() || 'audio_files';
+            let filename = outputFileNameInput.value.trim();
+            
+            if (!filename) {
+                const videoInput = document.getElementById('videoFile');
+                if (videoInput.files.length > 0) {
+                    const originalName = videoInput.files[0].name;
+                    const baseName = originalName.replace(/\.[^/.]+$/, '');
+                    filename = `${baseName}_translated.mp4`;
+                } else {
+                    filename = '原文件名_translated.mp4';
+                }
+            }
+            
+            // 確保文件名有 .mp4 擴展名
+            if (filename !== '原文件名_translated.mp4' && !filename.toLowerCase().endsWith('.mp4')) {
+                filename += '.mp4';
+            }
+            
+            fullOutputPathSpan.textContent = `${directory}/${filename}`;
+        }
+
+        // 自動生成輸出文件名
+        function generateFileName() {
+            const videoInput = document.getElementById('videoFile');
+            const outputInput = document.getElementById('outputFileName');
+            
+            if (videoInput.files.length > 0) {
+                const originalName = videoInput.files[0].name;
+                const baseName = originalName.replace(/\.[^/.]+$/, ''); // 移除擴展名
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const newName = `${baseName}_translated_${timestamp}.mp4`;
+                outputInput.value = newName;
+                updateFullOutputPath();
+            } else {
+                alert('請先選擇要上傳的影片');
+            }
+        }
+
+        // 添加日誌
+        function addLog(message, type = 'info') {
+            const logLine = document.createElement('div');
+            logLine.className = `log-line ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            logLine.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logLine);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 更新進度
+        function updateProgress(percent, status) {
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            statusText.textContent = status;
+        }
+
+        // 更新狀態徽章
+        function updateStatus(status) {
+            statusBadge.className = 'status-badge ' + status;
+            const statusText = {
+                'ready': '就緒',
+                'processing': '處理中',
+                'error': '錯誤'
+            };
+            statusBadge.textContent = statusText[status] || status;
+        }
+
+        // 表單提交
+        translationForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // 顯示進度容器
+            progressContainer.classList.add('show');
+            resultContainer.classList.remove('show');
+            logContainer.innerHTML = '';
+            
+            // 禁用提交按鈕
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ 處理中...';
+            
+            updateStatus('processing');
+            updateProgress(0, '正在上傳影片...');
+            addLog('開始處理影片...', 'info');
+
+            // 準備表單數據
+            const formData = new FormData();
+            formData.append('video', videoFile.files[0]);
+            formData.append('api_key', document.getElementById('apiKey').value);
+            formData.append('voice_language', document.getElementById('voiceLanguage').value);
+            formData.append('slide_language', document.getElementById('slideLanguage').value);
+            formData.append('enable_slide_translation', document.getElementById('enableSlideTranslation').checked);
+            formData.append('min_segment_duration', document.getElementById('minSegmentDuration').value);
+            formData.append('hash_threshold', document.getElementById('hashThreshold').value);
+            
+            // 添加輸出目錄
+            const outputDirectory = document.getElementById('outputDirectory').value.trim() || 'audio_files';
+            formData.append('output_directory', outputDirectory);
+            
+            // 添加輸出文件名（如果有）
+            const outputFileName = document.getElementById('outputFileName').value.trim();
+            if (outputFileName) {
+                formData.append('output_filename', outputFileName);
+            }
+
+            try {
+                // 發送請求
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '處理失敗');
+                }
+
+                // 獲取任務 ID
+                const data = await response.json();
+                const taskId = data.task_id;
+                
+                addLog(`任務已建立，ID: ${taskId}`, 'success');
+                
+                // 開始輪詢進度
+                pollProgress(taskId);
+
+            } catch (error) {
+                addLog(`錯誤: ${error.message}`, 'error');
+                updateStatus('error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = '開始處理影片';
+            }
+        });
+
+        // 輪詢進度
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        let currentTaskId = null;
+        let eventSource = null;
+        let lastProgressUpdate = Date.now();
+        let progressCheckInterval = null;
+
+        function pollProgress(taskId) {
+            currentTaskId = taskId;
+            reconnectAttempts = 0;
+            connectToProgress(taskId);
+            
+            // 啟動進度檢查定時器（每60秒檢查一次）
+            progressCheckInterval = setInterval(() => {
+                const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
+                if (timeSinceLastUpdate > 60000) { // 60秒沒有更新才認為可能斷線
+                    console.log('長時間無更新，檢查連接狀態...');
+                    if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                        addLog('連接已中斷，正在重新連接...', 'warning');
+                        reconnectToProgress();
+                    }
+                }
+            }, 60000);
+        }
+
+        function connectToProgress(taskId) {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(`/progress/${taskId}`);
+            lastProgressUpdate = Date.now();
+            let firstMessageReceived = false;
+
+            eventSource.onopen = function() {
+                reconnectAttempts = 0;
+                console.log('SSE 連接已建立');
+            };
+
+            eventSource.onmessage = function(event) {
+                lastProgressUpdate = Date.now();
+                
+                // 第一次收到消息時才顯示連接成功
+                if (!firstMessageReceived) {
+                    firstMessageReceived = true;
+                    console.log('開始接收進度更新');
+                }
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // 忽略心跳消息（不顯示）
+                    if (data.heartbeat) {
+                        console.log('心跳:', data);
+                        return;
+                    }
+                    
+                    // 更新進度
+                    if (data.progress !== undefined) {
+                        updateProgress(data.progress, data.status || '處理中...');
+                    }
+                    
+                    // 添加日誌
+                    if (data.log) {
+                        const logType = data.log.includes('錯誤') || data.log.includes('失敗') || data.log.includes('❌') ? 'error' :
+                                       data.log.includes('成功') || data.log.includes('完成') || data.log.includes('✅') ? 'success' :
+                                       data.log.includes('警告') || data.log.includes('⚠️') ? 'warning' : 'info';
+                        addLog(data.log, logType);
+                    }
+                    
+                    // 處理完成
+                    if (data.status === 'completed') {
+                        cleanupProgress();
+                        updateProgress(100, '處理完成！');
+                        updateStatus('ready');
+                        addLog('✅ 影片處理完成！', 'success');
+                        
+                        // 顯示下載按鈕並保存下載 URL
+                        resultContainer.classList.add('show');
+                        downloadBtn.setAttribute('data-download-url', data.output_url);
+                        
+                        // 顯示保存的文件路徑
+                        const savedFilePath = document.getElementById('savedFilePath');
+                        const fullPath = fullOutputPathSpan.textContent;
+                        savedFilePath.textContent = fullPath;
+                        
+                        // 恢復提交按鈕
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '開始處理影片';
+                    }
+                    
+                    // 處理失敗
+                    if (data.status === 'failed') {
+                        cleanupProgress();
+                        updateStatus('error');
+                        addLog(`❌ 處理失敗: ${data.error}`, 'error');
+                        
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '開始處理影片';
+                    }
+                } catch (error) {
+                    console.error('解析進度數據失敗:', error, event.data);
+                }
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error, 'readyState:', eventSource.readyState);
+                
+                // 只有在真正斷開後才重連
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    // 如果還沒收到第一條消息就斷開，可能是後端還沒準備好
+                    if (!firstMessageReceived && reconnectAttempts < 3) {
+                        console.log('等待後端準備...');
+                        reconnectToProgress();
+                    } else if (firstMessageReceived) {
+                        addLog('連接中斷，正在重新連接...', 'warning');
+                        reconnectToProgress();
+                    }
+                }
+                // CONNECTING 狀態不需要處理，等待自動連接
+            };
+        }
+
+        function reconnectToProgress() {
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                addLog(`已達到最大重連次數（${maxReconnectAttempts}次），請刷新頁面重試`, 'error');
+                cleanupProgress();
+                updateStatus('error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = '開始處理影片';
+                return;
+            }
+
+            reconnectAttempts++;
+            
+            // 只在第一次重連時顯示消息，避免太吵
+            if (reconnectAttempts === 1) {
+                console.log('嘗試重新連接...');
+            } else {
+                console.log(`重連嘗試 ${reconnectAttempts}/${maxReconnectAttempts}`);
+            }
+            
+            setTimeout(() => {
+                if (currentTaskId) {
+                    connectToProgress(currentTaskId);
+                }
+            }, 1000); // 固定 1 秒延遲，不要遞增
+        }
+
+        function cleanupProgress() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            if (progressCheckInterval) {
+                clearInterval(progressCheckInterval);
+                progressCheckInterval = null;
+            }
+            currentTaskId = null;
+        }
+
+        // 頁面卸載時清理
+        window.addEventListener('beforeunload', cleanupProgress);
+
+        // 下載文件函數
+        async function downloadFile() {
+            const downloadUrl = downloadBtn.getAttribute('data-download-url');
+            if (!downloadUrl) {
+                alert('❌ 下載鏈接不可用，請重新處理影片');
+                return;
+            }
+
+            // 獲取輸出文件名
+            let fileName = document.getElementById('outputFileName').value.trim();
+            if (!fileName) {
+                // 如果沒有指定文件名，使用默認名稱
+                const originalFile = document.getElementById('videoFile').files[0];
+                if (originalFile) {
+                    const baseName = originalFile.name.replace(/\.[^/.]+$/, '');
+                    fileName = `${baseName}_translated.mp4`;
+                } else {
+                    fileName = 'video_translated.mp4';
+                }
+            }
+
+            // 確保文件名有 .mp4 擴展名
+            if (!fileName.toLowerCase().endsWith('.mp4')) {
+                fileName += '.mp4';
+            }
+
+            addLog(`📥 準備下載: ${fileName}`, 'info');
+            addLog('💡 瀏覽器即將彈出「另存為」對話框，請選擇保存位置', 'info');
+
+            try {
+                // 方法1: 嘗試使用 fetch + blob 下載（確保觸發另存為對話框）
+                const response = await fetch(downloadUrl);
+                if (!response.ok) {
+                    throw new Error('下載失敗');
+                }
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                
+                // 創建下載鏈接
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                link.style.display = 'none';
+                
+                // 添加到 DOM 並觸發點擊
+                document.body.appendChild(link);
+                link.click();
+                
+                // 清理
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                }, 100);
+                
+                addLog('✅ 下載已開始！請在彈出的對話框中選擇保存位置', 'success');
+                addLog('📂 您可以將文件保存到任意資料夾', 'info');
+                
+            } catch (error) {
+                console.error('下載錯誤:', error);
+                
+                // 方法2: 備用方案 - 直接使用 <a> 標籤
+                addLog('⚠️ 使用備用下載方法...', 'warning');
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = fileName;
+                link.target = '_blank';
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                }, 100);
+                
+                addLog('✅ 下載已開始（備用方法）', 'success');
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -65,4 +65,6 @@ pypinyin
 
 mesop
 
+# Flask Web Framework
+flask==3.0.0
 werkzeug
