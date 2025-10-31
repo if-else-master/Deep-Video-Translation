@@ -207,7 +207,12 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
     language_configs = {
         "日文": {"code": "ja", "max_length": 80},
         "英文": {"code": "en", "max_length": 100}, 
-        "中文": {"code": "zh", "max_length": 82}
+        "中文": {"code": "zh", "max_length": 82},
+        "德文": {"code": "de", "max_length": 100},
+        "法文": {"code": "fr", "max_length": 100},
+        "俄文": {"code": "ru", "max_length": 90},
+        "義大利文": {"code": "it", "max_length": 100},
+        "西班牙文": {"code": "es", "max_length": 100}
     }
     
     lang_config = language_configs.get(language, {"code": "en", "max_length": 100})

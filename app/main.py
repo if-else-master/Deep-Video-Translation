@@ -95,7 +95,12 @@ class DeepVideoTranslationApp:
         self.font_paths = {
             "Japanese": os.path.join(current_dir, "NotoSansCJKjp-Regular.otf"),
             "English": self.get_system_font() or "/System/Library/Fonts/Arial.ttf",
-            "Chinese": os.path.join(current_dir, "NotoSansTC-Regular.ttf")
+            "Chinese": os.path.join(current_dir, "NotoSansTC-Regular.ttf"),
+            "German": self.get_system_font() or "/System/Library/Fonts/Arial.ttf",
+            "French": self.get_system_font() or "/System/Library/Fonts/Arial.ttf",
+            "Russian": self.get_system_font() or "/System/Library/Fonts/Arial.ttf",
+            "Italian": self.get_system_font() or "/System/Library/Fonts/Arial.ttf",
+            "Spanish": self.get_system_font() or "/System/Library/Fonts/Arial.ttf"
         }
         
         # 檢查字體文件是否存在
@@ -191,7 +196,12 @@ class DeepVideoTranslationApp:
         lang_prompts = {
             "Japanese": "請將以下文字翻譯成日文，只輸出翻譯結果，不要有任何解釋或額外文字：",
             "English": "請將以下文字翻譯成英文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "Chinese": "請將以下文字翻譯成中文，只輸出翻譯結果，不要有任何解釋或額外文字："
+            "Chinese": "請將以下文字翻譯成中文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "German": "請將以下文字翻譯成德文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "French": "請將以下文字翻譯成法文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "Russian": "請將以下文字翻譯成俄文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "Italian": "請將以下文字翻譯成義大利文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "Spanish": "請將以下文字翻譯成西班牙文，只輸出翻譯結果，不要有任何解釋或額外文字："
         }
         
         prompt = lang_prompts.get(target_lang, lang_prompts["Japanese"]) + text
@@ -639,7 +649,7 @@ class DeepVideoTranslationApp:
         return estimated_face_count, estimated_slide_count, total_frames
 
     def analyze_and_segment_video(self, video_path):
-        """分析影片並智能分段，分離人臉和簡報片段"""
+        """分析影片並智能分段，分離人臉和簡報片段（優化版：減少過度分段）"""
         self.log("🔍 開始分析影片內容並進行智能分段...")
         
         # 創建輸出目錄
@@ -658,6 +668,10 @@ class DeepVideoTranslationApp:
         min_frames = int(fps * min_duration)
         hash_threshold = self.hash_threshold
         
+        # 場景穩定性檢查參數
+        stability_check_frames = 3  # 需要連續3幀確認才算場景變化
+        check_interval = 15  # 每15幀檢查一次（從5幀改為15幀，減少檢查頻率）
+        
         # 第一步：分析整個影片的內容類型
         self.log("📊 正在分析影片內容類型...")
         segments = []
@@ -665,53 +679,105 @@ class DeepVideoTranslationApp:
         frame_count = 0
         prev_hash = None
         
+        # 場景穩定性追蹤
+        pending_type_change = None  # 待確認的類型變化
+        pending_type_change_count = 0  # 連續相同類型變化的計數
+        
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
+            
+            # 只在指定間隔檢查內容類型（降低檢查頻率）
+            if frame_count % check_interval == 0:
+                # 檢測內容類型
+                has_faces = self.detect_faces_in_frame(frame)
+                is_slide = self.is_slide_frame(frame)
                 
-            # 檢測內容類型
-            has_faces = self.detect_faces_in_frame(frame)
-            is_slide = self.is_slide_frame(frame)
-            
-            # 決定段落類型
-            if has_faces:
-                segment_type = "face"
-            elif is_slide:
-                segment_type = "slide"
-            else:
-                segment_type = "unknown"
-            
-            # 檢查是否需要開始新段落
-            if current_segment is None:
-                current_segment = {
-                    'type': segment_type,
-                    'start_frame': frame_count,
-                    'end_frame': frame_count,
-                    'frames': [frame_count]
-                }
-            elif current_segment['type'] != segment_type or self.should_split_segment(frame, prev_hash, hash_threshold):
-                # 結束當前段落（如果足夠長）
-                if len(current_segment['frames']) >= min_frames:
-                    current_segment['end_frame'] = frame_count - 1
-                    segments.append(current_segment)
+                # 決定段落類型
+                if has_faces:
+                    segment_type = "face"
+                elif is_slide:
+                    segment_type = "slide"
+                else:
+                    segment_type = "unknown"
                 
-                # 開始新段落
-                current_segment = {
-                    'type': segment_type,
-                    'start_frame': frame_count,
-                    'end_frame': frame_count,
-                    'frames': [frame_count]
-                }
+                # 檢查是否需要開始新段落
+                if current_segment is None:
+                    # 初始化第一個段落
+                    current_segment = {
+                        'type': segment_type,
+                        'start_frame': frame_count,
+                        'end_frame': frame_count,
+                        'frames': [frame_count]
+                    }
+                    pending_type_change = None
+                    pending_type_change_count = 0
+                else:
+                    # 檢查類型是否改變
+                    type_changed = current_segment['type'] != segment_type
+                    
+                    # 檢查場景是否變化（基於 hash）
+                    scene_changed = False
+                    if prev_hash is not None and frame_count % check_interval == 0:
+                        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        current_hash = imagehash.phash(pil_image)
+                        scene_changed = abs(current_hash - prev_hash) > hash_threshold
+                        prev_hash = current_hash
+                    elif prev_hash is None:
+                        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        prev_hash = imagehash.phash(pil_image)
+                    
+                    # 場景穩定性檢查：需要連續確認才算真正變化
+                    if type_changed or scene_changed:
+                        if pending_type_change == segment_type:
+                            # 連續相同的變化，增加計數
+                            pending_type_change_count += 1
+                        else:
+                            # 不同的變化，重新開始計數
+                            pending_type_change = segment_type
+                            pending_type_change_count = 1
+                        
+                        # 達到穩定性門檻，確認場景變化
+                        if pending_type_change_count >= stability_check_frames:
+                            # 結束當前段落（確保達到最小長度）
+                            segment_duration = (frame_count - current_segment['start_frame']) / fps
+                            if segment_duration >= min_duration:
+                                current_segment['end_frame'] = frame_count - 1
+                                segments.append(current_segment)
+                                
+                                # 開始新段落
+                                current_segment = {
+                                    'type': segment_type,
+                                    'start_frame': frame_count,
+                                    'end_frame': frame_count,
+                                    'frames': [frame_count]
+                                }
+                                self.log(f"   ✂️ 場景切換: 幀 {frame_count} ({segment_type})")
+                            else:
+                                # 段落太短，繼續延伸
+                                current_segment['end_frame'] = frame_count
+                                current_segment['frames'].append(frame_count)
+                            
+                            # 重置穩定性追蹤
+                            pending_type_change = None
+                            pending_type_change_count = 0
+                        else:
+                            # 還未達到穩定性門檻，繼續觀察
+                            current_segment['end_frame'] = frame_count
+                            current_segment['frames'].append(frame_count)
+                    else:
+                        # 類型沒變化，繼續當前段落
+                        current_segment['end_frame'] = frame_count
+                        current_segment['frames'].append(frame_count)
+                        # 重置穩定性追蹤
+                        pending_type_change = None
+                        pending_type_change_count = 0
             else:
-                # 繼續當前段落
-                current_segment['end_frame'] = frame_count
-                current_segment['frames'].append(frame_count)
-            
-            # 儲存當前幀的hash用於場景切換檢測
-            if frame_count % 5 == 0:  # 每5幀檢查一次
-                pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                prev_hash = imagehash.phash(pil_image)
+                # 不在檢查間隔，繼續當前段落
+                if current_segment:
+                    current_segment['end_frame'] = frame_count
+                    current_segment['frames'].append(frame_count)
             
             frame_count += 1
             
@@ -721,22 +787,83 @@ class DeepVideoTranslationApp:
                 self.update_progress(progress)
         
         # 添加最後一個段落
-        if current_segment and len(current_segment['frames']) >= min_frames:
-            segments.append(current_segment)
+        if current_segment:
+            segment_duration = (current_segment['end_frame'] - current_segment['start_frame']) / fps
+            if segment_duration >= min_duration:
+                segments.append(current_segment)
         
         cap.release()
         
-        self.log(f"📋 分析完成，找到 {len(segments)} 個段落:")
-        face_segments = [s for s in segments if s['type'] == 'face']
-        slide_segments = [s for s in segments if s['type'] == 'slide']
+        self.log(f"📋 初步分析完成，找到 {len(segments)} 個段落")
+        
+        # 第三步：合併相鄰的相同類型短段落
+        self.log("🔗 正在合併相鄰的相同類型段落...")
+        merged_segments = self.merge_similar_segments(segments, fps, min_duration)
+        
+        self.log(f"📋 合併後剩餘 {len(merged_segments)} 個段落:")
+        face_segments = [s for s in merged_segments if s['type'] == 'face']
+        slide_segments = [s for s in merged_segments if s['type'] == 'slide']
         self.log(f"   👤 人臉段落: {len(face_segments)}")
         self.log(f"   📊 簡報段落: {len(slide_segments)}")
         
-        # 第二步：提取並儲存段落
-        self.extract_segments(video_path, segments, face_dir, ppt_dir)
+        # 第四步：提取並儲存段落
+        self.extract_segments(video_path, merged_segments, face_dir, ppt_dir)
         
-        return segments
+        return merged_segments
 
+    def merge_similar_segments(self, segments, fps, min_duration):
+        """合併相鄰的相同類型段落，減少過度分段"""
+        if not segments:
+            return segments
+        
+        merged = []
+        current_merged = segments[0].copy()
+        
+        for i in range(1, len(segments)):
+            next_segment = segments[i]
+            
+            # 檢查是否為相同類型
+            if current_merged['type'] == next_segment['type']:
+                # 合併段落
+                current_merged['end_frame'] = next_segment['end_frame']
+                current_merged['frames'].extend(next_segment['frames'])
+                self.log(f"   🔗 合併段落: {current_merged['type']} 類型，幀 {current_merged['start_frame']}-{current_merged['end_frame']}")
+            else:
+                # 不同類型，檢查當前段落長度
+                segment_duration = (current_merged['end_frame'] - current_merged['start_frame']) / fps
+                
+                if segment_duration >= min_duration:
+                    # 達到最小長度，保存
+                    merged.append(current_merged)
+                else:
+                    # 段落太短，合併到下一個段落
+                    self.log(f"   ⚠️ 段落太短 ({segment_duration:.1f}s < {min_duration}s)，將合併到相鄰段落")
+                    # 如果已經有合併的段落，合併到最後一個
+                    if merged:
+                        merged[-1]['end_frame'] = current_merged['end_frame']
+                        merged[-1]['frames'].extend(current_merged['frames'])
+                    else:
+                        # 沒有之前的段落，合併到下一個
+                        next_segment['start_frame'] = current_merged['start_frame']
+                        next_segment['frames'] = current_merged['frames'] + next_segment['frames']
+                
+                # 開始新的合併段落
+                current_merged = next_segment.copy()
+        
+        # 添加最後一個段落
+        segment_duration = (current_merged['end_frame'] - current_merged['start_frame']) / fps
+        if segment_duration >= min_duration:
+            merged.append(current_merged)
+        elif merged:
+            # 太短，合併到最後一個段落
+            merged[-1]['end_frame'] = current_merged['end_frame']
+            merged[-1]['frames'].extend(current_merged['frames'])
+        else:
+            # 只有一個段落，保留它
+            merged.append(current_merged)
+        
+        return merged
+    
     def should_split_segment(self, current_frame, prev_hash, threshold):
         """判斷是否應該分割段落（基於場景變化）"""
         if prev_hash is None:
@@ -1481,98 +1608,65 @@ class DeepVideoTranslationApp:
             # 確保所有必要的目錄存在
             self.ensure_basic_directories()
             
-            # 更新狀態
-            self.log("正在進行智能分段分析...")
-            self.update_progress(0, "正在進行智能分段分析...")
+            # 判斷是否需要分段處理
+            if not enable_slide_translation:
+                # 不需要簡報翻譯，直接處理整個影片（不分段）
+                self.log("🎯 簡報翻譯已停用，將直接處理完整影片（不進行分段）")
+                self.update_progress(10, "正在處理影片...")
+                
+                # 直接將整個影片當作人臉影片處理
+                face_dir = "temp/faceai"
+                self.ensure_directory_exists(face_dir)
+                
+                # 複製原始影片到 face 目錄
+                import shutil
+                full_video_path = os.path.join(face_dir, "01.mp4")
+                shutil.copy(input_path, full_video_path)
+                self.log(f"✅ 已準備影片進行處理: {full_video_path}")
+                
+                # 處理影片（語音翻譯 + 嘴形同步）
+                self.log("正在進行語音翻譯和嘴形同步...")
+                self.update_progress(20, "正在進行語音翻譯和嘴形同步...")
+                face_segments = self.process_face_segments(face_dir, language)
+                
+                # 直接使用處理後的影片作為輸出
+                if face_segments and len(face_segments) > 0:
+                    import shutil
+                    shutil.copy(face_segments[0], output_path)
+                    self.update_progress(100, "處理完成！")
+                    self.log(f"✅ 影片處理完成！輸出文件：{output_path}", 'success')
+                else:
+                    raise ValueError("影片處理失敗，沒有生成輸出文件")
+                    
+            else:
+                # 需要簡報翻譯，進行智能分段處理
+                self.log("🎯 簡報翻譯已啟用，將進行智能分段處理...")
+                self.update_progress(0, "正在進行智能分段分析...")
+                
+                # 步驟1：分析並分段影片
+                segments_info = self.analyze_and_segment_video(input_path)
+                
+                if not segments_info:
+                    raise ValueError("無法分析影片內容，請確認影片格式正確")
+                
+                # 步驟2：處理人臉段落
+                self.log("正在處理人臉段落...")
+                self.update_progress(40, "正在處理人臉段落...")
+                face_segments = self.process_face_segments("temp/faceai", language)
             
-            # 步驟1：分析並分段影片
-            segments_info = self.analyze_and_segment_video(input_path)
-            
-            if not segments_info:
-                raise ValueError("無法分析影片內容，請確認影片格式正確")
-            
-            # 步驟2：處理人臉段落
-            self.log("正在處理人臉段落...")
-            self.update_progress(40, "正在處理人臉段落...")
-            face_segments = self.process_face_segments("temp/faceai", language)
-            
-            # 步驟3：處理簡報段落
-            processed_slide_segments = []
-            if enable_slide_translation:
+                # 步驟3：處理簡報段落
                 self.log("正在處理簡報段落...")
                 self.update_progress(70, "正在處理簡報段落...")
                 processed_slide_segments = self.process_slide_segments("temp/pptai", language, slide_language)
-            else:
-                # 如果不啟用簡報翻譯，直接處理音頻但不翻譯投影片內容
-                print("📋 簡報翻譯已停用，僅處理音頻...")
-                ppt_dir = "temp/pptai"
-                self.ensure_directory_exists(ppt_dir)
-                ppt_files = sorted([f for f in os.listdir(ppt_dir) if f.endswith('.mp4')])
                 
-                for j, filename in enumerate(ppt_files):
-                    input_path_seg = os.path.join(ppt_dir, filename)
-                    base_name = os.path.splitext(filename)[0]
-                    processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
-                    
-                    try:
-                        self.log(f"📋 處理簡報音頻 {filename}...")
-                        # 處理音頻（直接使用段落文件，因為已包含音頻）
-                        current_api_key = self.api_key
-                        
-                        try:
-                            translated_text = voice(input_path_seg, current_api_key, language)
-                        except Exception as audio_error:
-                            self.log(f"  ⚠️ 音頻轉文字失敗: {audio_error}", 'warning')
-                            translated_text = ""
-                        
-                        if translated_text and translated_text.strip():
-                            print(f"  📝 翻譯結果: {translated_text}")
-                            temp_audio = os.path.join(ppt_dir, f"{base_name}_audio.wav")
-                            self.ensure_directory_exists(os.path.dirname(temp_audio))
-                            
-                            try:
-                                # 使用段落文件本身作為參考音頻進行語音克隆
-                                xttsv(translated_text, input_path_seg, temp_audio, language)
-                                
-                                # 合成音頻和視頻（保持原始視頻內容，只替換音頻）
-                                command = f'ffmpeg -y -i "{input_path_seg}" -i "{temp_audio}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "{processed_path}"'
-                                result = subprocess.run(command, shell=True, capture_output=True, text=True)
-                                if result.returncode != 0:
-                                    print(f"  ⚠️ 音頻合成失敗，使用原始視頻: {result.stderr}")
-                                    import shutil
-                                    shutil.copy(input_path_seg, processed_path)
-                                else:
-                                    print(f"  ✅ 音頻替換完成")
-                            except Exception as tts_error:
-                                print(f"  ⚠️ 語音克隆失敗: {tts_error}")
-                                import shutil
-                                shutil.copy(input_path_seg, processed_path)
-                        else:
-                            # 沒有音頻，直接複製
-                            print(f"  ⚠️ 沒有檢測到語音內容")
-                            import shutil
-                            shutil.copy(input_path_seg, processed_path)
-                        
-                        processed_slide_segments.append(processed_path)
-                        
-                    except Exception as e:
-                        print(f"  ❌ 處理簡報音頻失敗: {e}")
-                        import shutil
-                        shutil.copy(input_path_seg, processed_path)
-                        processed_slide_segments.append(processed_path)
-                    
-                    # 更新進度
-                    progress = 70 + int((j / len(ppt_files)) * 20)
-                    self.update_progress(progress)
-            
-            # 步驟4：自動剪接
-            self.log("正在進行自動剪接...")
-            self.update_progress(90, "正在進行自動剪接...")
-            
-            self.auto_edit_segments(face_segments, processed_slide_segments, segments_info, output_path)
-            
-            self.update_progress(100, "處理完成！")
-            self.log(f"✅ 智能分段處理已完成！輸出文件：{output_path}", 'success')
+                # 步驟4：自動剪接
+                self.log("正在進行自動剪接...")
+                self.update_progress(90, "正在進行自動剪接...")
+                
+                self.auto_edit_segments(face_segments, processed_slide_segments, segments_info, output_path)
+                
+                self.update_progress(100, "處理完成！")
+                self.log(f"✅ 智能分段處理已完成！輸出文件：{output_path}", 'success')
             
         except Exception as e:
             self.log(f"❌ 處理過程中發生錯誤：{str(e)}", 'error')

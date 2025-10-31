@@ -392,7 +392,7 @@
     <div class="container">
         <div class="header">
             <h1>AI 深度影片翻譯服務</h1>
-            
+            <p>🌍 支援 8 種語言：日文 • 英文 • 中文 • 德文 • 法文 • 俄文 • 義大利文 • 西班牙文</p>
         </div>
 
         <div class="content">
@@ -467,20 +467,30 @@
                 <!-- 語音翻譯語言 -->
                 <div class="two-column">
                     <div class="form-group">
-                        <label for="voiceLanguage">語音翻譯語言</label>
+                        <label for="voiceLanguage">🎤 語音翻譯語言</label>
                         <select id="voiceLanguage" name="voice_language" required>
-                            <option value="日文" selected>日文</option>
-                            <option value="英文">英文</option>
-                            <option value="中文">中文</option>
+                            <option value="日文" selected>日文 (Japanese)</option>
+                            <option value="英文">英文 (English)</option>
+                            <option value="中文">中文 (Chinese)</option>
+                            <option value="德文">德文 (German)</option>
+                            <option value="法文">法文 (French)</option>
+                            <option value="俄文">俄文 (Russian)</option>
+                            <option value="義大利文">義大利文 (Italian)</option>
+                            <option value="西班牙文">西班牙文 (Spanish)</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label for="slideLanguage">投影片翻譯語言</label>
+                        <label for="slideLanguage">📊 投影片翻譯語言</label>
                         <select id="slideLanguage" name="slide_language">
-                            <option value="Japanese" selected>Japanese</option>
-                            <option value="English">English</option>
-                            <option value="Chinese">Chinese</option>
+                            <option value="Japanese" selected>Japanese (日文)</option>
+                            <option value="English">English (英文)</option>
+                            <option value="Chinese">Chinese (中文)</option>
+                            <option value="German">German (德文)</option>
+                            <option value="French">French (法文)</option>
+                            <option value="Russian">Russian (俄文)</option>
+                            <option value="Italian">Italian (義大利文)</option>
+                            <option value="Spanish">Spanish (西班牙文)</option>
                         </select>
                     </div>
                 </div>
@@ -493,15 +503,24 @@
 
                 <!-- 進階設定 -->
                 <div class="advanced-settings" id="advancedSettings">
-                    <h3 style="margin-bottom: 15px;">進階設定</h3>
+                    <h3 style="margin-bottom: 15px;">⚙️ 進階設定</h3>
+                    <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9em; color: #856404;">
+                        <strong>💡 提示：</strong>啟用「投影片翻譯」時才會進行分段處理。如果影片只有人臉部分，建議關閉投影片翻譯以加快處理速度。
+                    </div>
                     <div class="settings-grid">
                         <div class="form-group">
                             <label for="minSegmentDuration">最小段落長度 (秒)</label>
-                            <input type="number" id="minSegmentDuration" name="min_segment_duration" value="2" min="1" max="10">
+                            <input type="number" id="minSegmentDuration" name="min_segment_duration" value="3" min="1" max="10" step="0.5">
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                建議值：3-5秒。較大的值可減少段落數量，提升效率。
+                            </small>
                         </div>
                         <div class="form-group">
                             <label for="hashThreshold">場景切換門檻</label>
-                            <input type="number" id="hashThreshold" name="hash_threshold" value="5" min="1" max="20">
+                            <input type="number" id="hashThreshold" name="hash_threshold" value="8" min="1" max="20">
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                建議值：8-12。較大的值可減少過度分段，避免相似場景被分開。
+                            </small>
                         </div>
                     </div>
                 </div>
