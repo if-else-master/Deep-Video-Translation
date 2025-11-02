@@ -633,7 +633,6 @@ pad=1280:720:(ow-iw)/2:(oh-ih)/2
 如有問題或建議，請透過以下方式聯絡：
 
 - 提交 [GitHub Issue](https://github.com/if-else-master/Deep-Video-Translation.git)
-- 電子郵件：rayc57429@gmail.com
 
 ---
 
