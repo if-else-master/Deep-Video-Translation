@@ -86,6 +86,10 @@ class DeepVideoTranslationApp:
         self.api_key = None
         self.min_segment_duration = 2
         self.hash_threshold = 5
+        
+        # 初始化人臉檢測器（避免重複載入）
+        self.face_cascade = None
+        self._init_face_detector()
 
     def setup_fonts(self):
         """設置字體路徑，使用本地的 Noto 字體"""
@@ -128,26 +132,52 @@ class DeepVideoTranslationApp:
                 return font_path
         return None
 
+    def ensure_basic_directories(self):
+        """確保基本目錄存在"""
+        directories = ['temp', 'temp/uploads', 'temp/segments', 'temp/audio_segments']
+        for directory in directories:
+            os.makedirs(directory, exist_ok=True)
+    
+    def _init_face_detector(self):
+        """初始化人臉檢測器（只載入一次）"""
+        try:
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            if self.face_cascade.empty():
+                print("⚠️ 警告: 人臉檢測器載入失敗，將使用備用方法")
+                self.face_cascade = None
+        except Exception as e:
+            print(f"⚠️ 初始化人臉檢測器失敗: {e}")
+            self.face_cascade = None
+
     def detect_faces_in_frame(self, frame):
         """檢測幀中是否有人臉"""
+        if frame is None or frame.size == 0:
+            return False
+            
         try:
-            # 使用 OpenCV 的人臉檢測器
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            # 如果檢測器未初始化，嘗試初始化
+            if self.face_cascade is None:
+                self._init_face_detector()
+                if self.face_cascade is None:
+                    return False
+            
+            # 轉換為灰階
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
             # 使用多種參數嘗試檢測
             # 第一次嘗試：標準參數
-            faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+            faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
             if len(faces) > 0:
                 return True
                 
             # 第二次嘗試：更寬鬆的參數
-            faces = face_cascade.detectMultiScale(gray, 1.05, 3, minSize=(30, 30))
+            faces = self.face_cascade.detectMultiScale(gray, 1.05, 3, minSize=(30, 30))
             if len(faces) > 0:
                 return True
                 
             # 第三次嘗試：非常寬鬆的參數
-            faces = face_cascade.detectMultiScale(gray, 1.3, 2, minSize=(20, 20))
+            faces = self.face_cascade.detectMultiScale(gray, 1.3, 2, minSize=(20, 20))
             return len(faces) > 0
             
         except Exception as e:
@@ -194,14 +224,14 @@ class DeepVideoTranslationApp:
         headers = {"Content-Type": "application/json"}
         
         lang_prompts = {
-            "Japanese": "請將以下文字翻譯成日文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "English": "請將以下文字翻譯成英文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "Chinese": "請將以下文字翻譯成中文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "German": "請將以下文字翻譯成德文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "French": "請將以下文字翻譯成法文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "Russian": "請將以下文字翻譯成俄文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "Italian": "請將以下文字翻譯成義大利文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "Spanish": "請將以下文字翻譯成西班牙文，只輸出翻譯結果，不要有任何解釋或額外文字："
+            "Japanese": "Translate the following text to Japanese. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "English": "Translate the following text to English. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "Chinese": "Translate the following text to Chinese. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "German": "Translate the following text to German. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "French": "Translate the following text to French. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "Russian": "Translate the following text to Russian. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "Italian": "Translate the following text to Italian. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
+            "Spanish": "Translate the following text to Spanish. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: "
         }
         
         prompt = lang_prompts.get(target_lang, lang_prompts["Japanese"]) + text
@@ -213,7 +243,42 @@ class DeepVideoTranslationApp:
             r = requests.post(url, headers=headers, json=payload)
             if r.status_code == 200:
                 translated = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                clean_result = re.sub(r'^[^a-zA-Z\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]+', '', translated).strip()
+                
+                # 清理翻譯結果 - 移除常見的前綴和說明文字
+                clean_result = translated.strip()
+                
+                # 移除常見的英文前綴
+                english_prefixes = [
+                    "Here is the translation:",
+                    "Here's the translation:",
+                    "Translation:",
+                    "The translation is:",
+                    "Translated text:",
+                    "Here is:",
+                    "Here's:",
+                    "Output:",
+                    "Result:"
+                ]
+                
+                # 移除常見的中文前綴
+                chinese_prefixes = [
+                    "翻譯結果：",
+                    "翻譯如下：",
+                    "翻譯為：",
+                    "翻譯：",
+                    "譯文：",
+                    "翻譯後："
+                ]
+                
+                for prefix in english_prefixes + chinese_prefixes:
+                    if clean_result.startswith(prefix):
+                        clean_result = clean_result[len(prefix):].strip()
+                        break
+                
+                # 移除開頭的引號、冒號等符號
+                clean_result = re.sub(r'^["\':：\s]+', '', clean_result)
+                clean_result = re.sub(r'["\':：\s]+$', '', clean_result)
+                
                 return clean_result
             else:
                 print("翻譯失敗:", r.text)
@@ -227,8 +292,13 @@ class DeepVideoTranslationApp:
         mask = np.zeros(img.shape[:2], dtype=np.uint8)
         for box in boxes:
             pts = np.array(box, dtype=np.int32)
+            # 膨脹文字區域以確保完全覆蓋
             cv2.fillPoly(mask, [pts], 255)
-        return cv2.inpaint(img, mask, 3, cv2.INPAINT_TELEA)
+            # 對mask進行膨脹操作，擴大移除區域
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=1)
+        # 使用更好的修復半徑
+        return cv2.inpaint(img, mask, 7, cv2.INPAINT_TELEA)
 
     def draw_translated_text(self, pil_img, boxes, texts, font_path):
         """在 PIL Image 上貼回翻譯後的文本"""
@@ -246,8 +316,8 @@ class DeepVideoTranslationApp:
             x1, y1 = max(xs), max(ys)
             box_w, box_h = x1 - x0, y1 - y0
 
-            # 調整字型大小
-            font_size = max(int(box_h * 0.6), 16)  # 增加最小字型大小
+            # 調整字型大小 - 使用更合理的計算方式
+            font_size = max(int(box_h * 0.7), 18)  # 增加字型比例和最小字型大小
             
             try:
                 if font_path and os.path.exists(font_path):
@@ -263,8 +333,8 @@ class DeepVideoTranslationApp:
                 except:
                     continue
 
-            # 計算文字換行
-            max_chars = max(int(box_w / (font_size * 0.5)), 1)  # 調整字符寬度估算
+            # 計算文字換行 - 改進換行邏輯
+            max_chars = max(int(box_w / (font_size * 0.55)), 1)  # 調整字符寬度估算
             lines = []
             
             # 更智能的換行處理
@@ -273,8 +343,9 @@ class DeepVideoTranslationApp:
                 # 如果有多個詞，按詞換行
                 current_line = ""
                 for word in words:
-                    if len(current_line + word) <= max_chars:
-                        current_line += word + " "
+                    test_line = current_line + word + " "
+                    if len(test_line) <= max_chars:
+                        current_line = test_line
                     else:
                         if current_line:
                             lines.append(current_line.strip())
@@ -287,13 +358,13 @@ class DeepVideoTranslationApp:
 
             # 繪製文字
             y = y0
-            line_height = font_size + 2  # 增加行間距
+            line_height = font_size + 4  # 增加行間距
             
             for line in lines:
                 if y + line_height > y1:  # 檢查是否超出邊界
                     break
                 try:
-                    # 使用黑色文字，白色背景
+                    # 繪製黑色文字
                     draw.text((x0, y), line, font=font, fill=(0, 0, 0))
                     print(f"    ✅ 繪製文字: {line}")
                     y += line_height
@@ -996,7 +1067,14 @@ class DeepVideoTranslationApp:
         # 確保目錄存在
         self.ensure_directory_exists(face_dir)
         
-        face_files = sorted([f for f in os.listdir(face_dir) if f.endswith('.mp4')])
+        # 只處理原始段落文件（編號為 XX.mp4，不含 _processed）
+        face_files = sorted([f for f in os.listdir(face_dir) 
+                           if f.endswith('.mp4') and not '_processed' in f])
+        
+        if not face_files:
+            self.log("⚠️ 沒有找到需要處理的人臉段落")
+            return []
+        
         processed_segments = []
         
         for i, filename in enumerate(face_files):
@@ -1004,6 +1082,13 @@ class DeepVideoTranslationApp:
             
             input_path = os.path.join(face_dir, filename)
             base_name = os.path.splitext(filename)[0]
+            processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
+            
+            # 如果已經處理過，跳過
+            if os.path.exists(processed_path):
+                self.log(f"  ✅ 段落 {filename} 已處理過，跳過")
+                processed_segments.append(processed_path)
+                continue
             
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
@@ -1047,18 +1132,52 @@ class DeepVideoTranslationApp:
                 
                 # 3. 嘴形同步
                 print(f"  👄 正在進行嘴形同步...")
-                processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
-                processed_dir = os.path.dirname(processed_path)
-                self.ensure_directory_exists(processed_dir)
+                self.ensure_directory_exists(os.path.dirname(processed_path))
                 
                 # 確保 temp 目錄存在給 Wav2Lip 使用
                 self.ensure_directory_exists("temp")
                 
                 try:
-                    run_inference(input_path, audio_path, processed_path)
-                    print(f"  ✅ 人臉段落 {filename} 處理完成")
+                    # 檢查影片是否包含人臉，並提取包含人臉的幀
+                    cap_check = cv2.VideoCapture(input_path)
+                    has_face_frames = []
+                    frame_idx = 0
+                    
+                    # 檢查所有幀，記錄哪些幀有人臉
+                    print(f"  🔍 正在分析段落中的人臉分佈...")
+                    while True:
+                        ret, frame_check = cap_check.read()
+                        if not ret:
+                            break
+                        if self.detect_faces_in_frame(frame_check):
+                            has_face_frames.append(frame_idx)
+                        frame_idx += 1
+                    cap_check.release()
+                    
+                    total_frames = frame_idx
+                    face_ratio = len(has_face_frames) / total_frames if total_frames > 0 else 0
+                    print(f"  📊 人臉幀比例: {len(has_face_frames)}/{total_frames} ({face_ratio*100:.1f}%)")
+                    
+                    if face_ratio < 0.5:  # 如果少於50%的幀包含人臉
+                        print(f"  ⚠️ 段落 {filename} 人臉幀不足 ({face_ratio*100:.1f}% < 50%)，跳過嘴形同步，直接合成音頻")
+                        # 直接合成音頻和視頻
+                        command = f'ffmpeg -y -i "{input_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{processed_path}"'
+                        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                        if result.returncode == 0:
+                            print(f"  ✅ 音頻合成完成 {filename}")
+                        else:
+                            print(f"  ⚠️ 音頻合成失敗: {result.stderr}")
+                            import shutil
+                            shutil.copy(input_path, processed_path)
+                    else:
+                        # 有足夠人臉，進行嘴形同步
+                        print(f"  ✅ 人臉幀充足，進行嘴形同步...")
+                        run_inference(input_path, audio_path, processed_path)
+                        print(f"  ✅ 人臉段落 {filename} 嘴形同步完成")
                 except Exception as lipsync_error:
                     print(f"  ⚠️ 嘴形同步失敗: {lipsync_error}")
+                    import traceback
+                    traceback.print_exc()
                     # 如果嘴形同步失敗，嘗試直接合成音頻和視頻
                     try:
                         command = f'ffmpeg -y -i "{input_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "{processed_path}"'
@@ -1097,7 +1216,14 @@ class DeepVideoTranslationApp:
         # 確保目錄存在
         self.ensure_directory_exists(ppt_dir)
         
-        ppt_files = sorted([f for f in os.listdir(ppt_dir) if f.endswith('.mp4')])
+        # 只處理原始段落文件（編號為 XX.mp4，不含 _processed）
+        ppt_files = sorted([f for f in os.listdir(ppt_dir) 
+                          if f.endswith('.mp4') and not '_processed' in f])
+        
+        if not ppt_files:
+            self.log("⚠️ 沒有找到需要處理的簡報段落")
+            return []
+        
         processed_segments = []
         
         for i, filename in enumerate(ppt_files):
@@ -1105,6 +1231,13 @@ class DeepVideoTranslationApp:
             
             input_path = os.path.join(ppt_dir, filename)
             base_name = os.path.splitext(filename)[0]
+            processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
+            
+            # 如果已經處理過，跳過
+            if os.path.exists(processed_path):
+                self.log(f"  ✅ 段落 {filename} 已處理過，跳過")
+                processed_segments.append(processed_path)
+                continue
             
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
@@ -1137,10 +1270,10 @@ class DeepVideoTranslationApp:
                 
                 # 3. 投影片OCR翻譯
                 print(f"  📖 正在進行投影片OCR翻譯...")
-                processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
-                processed_dir = os.path.dirname(processed_path)
-                self.ensure_directory_exists(processed_dir)
+                self.ensure_directory_exists(os.path.dirname(processed_path))
                 
+                # 強制執行 OCR 翻譯
+                print(f"  🔍 開始 OCR 翻譯處理...")
                 self.process_slide_video(input_path, processed_path, slide_language, temp_audio)
                 
                 processed_segments.append(processed_path)
@@ -1148,8 +1281,9 @@ class DeepVideoTranslationApp:
                 
             except Exception as e:
                 print(f"  ❌ 處理簡報段落 {filename} 時發生錯誤: {e}")
+                import traceback
+                traceback.print_exc()
                 # 如果處理失敗，使用原始影片
-                processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
                 import shutil
                 shutil.copy(input_path, processed_path)
                 processed_segments.append(processed_path)
@@ -1205,6 +1339,7 @@ class DeepVideoTranslationApp:
                 if prev_hash is None or abs(curr_hash - prev_hash) > hash_threshold:
                     # 場景改變或首次處理，進行OCR翻譯
                     print(f"    🔄 幀 {frame_count}: 檢測到場景變化，進行OCR翻譯...")
+                    # 不需要傳遞 api_key，方法會使用 self.api_key
                     new_translated_frame = self.translate_frame_text(frame, target_lang)
                     
                     # 檢查翻譯是否成功
@@ -1220,6 +1355,7 @@ class DeepVideoTranslationApp:
                 elif current_translated_frame is None:
                     # 如果還沒有翻譯幀，至少嘗試一次翻譯
                     print(f"    🔍 幀 {frame_count}: 首次嘗試OCR翻譯...")
+                    # 不需要傳遞 api_key，方法會使用 self.api_key
                     current_translated_frame = self.translate_frame_text(frame, target_lang)
                     if current_translated_frame is not None:
                         translated_frame_count += 1
@@ -1270,13 +1406,24 @@ class DeepVideoTranslationApp:
         """翻譯單個幀中的文字"""
         try:
             print(f"      🔍 開始OCR識別...")
-            # OCR識別
-            reader = easyocr.Reader(['ch_tra'], gpu=False)
+            # OCR識別 - 修正語言組合
+            # EasyOCR 的語言組合限制：ch_tra 只能與 en 組合
+            if target_lang == "Japanese":
+                # 日文翻譯時，只用中文和英文識別，翻譯階段才轉日文
+                ocr_languages = ['ch_tra', 'en']
+            elif target_lang == "Chinese":
+                ocr_languages = ['ch_tra', 'en']
+            else:
+                ocr_languages = ['ch_tra', 'en']  # 默認使用中英文識別
+            
+            print(f"      📚 使用 OCR 語言: {ocr_languages}")
+            reader = easyocr.Reader(ocr_languages, gpu=False)
             results = reader.readtext(frame)
             
             boxes, orig_texts = [], []
             for box, text, conf in results:
-                if conf > 0.4:  # 置信度門檻
+                # 降低置信度門檻以識別更多文字
+                if conf > 0.3:  # 從 0.4 降低到 0.3
                     boxes.append(box)
                     orig_texts.append(text)
                     print(f"      📝 檢測到文字: '{text}' (置信度: {conf:.2f})")
@@ -1287,13 +1434,14 @@ class DeepVideoTranslationApp:
             
             print(f"      🔍 找到 {len(orig_texts)} 個文字區塊，開始翻譯...")
             
-            # 移除原文
+            # 移除原文 - 使用更大的膨脹以確保完全覆蓋
             img_clean = self.remove_text_with_inpainting(frame, boxes)
             print(f"      🧹 原文移除完成")
             
             # 翻譯文字
             translated = []
             for i, text in enumerate(orig_texts):
+                # 使用 self.api_key（在類初始化時已設定）
                 translated_text = self.translate_with_gemini(text, target_lang)
                 translated.append(translated_text)
                 print(f"      📝 翻譯 {i+1}: '{text}' -> '{translated_text}'")
@@ -1362,13 +1510,33 @@ class DeepVideoTranslationApp:
             segment_type = segment['type']
             if segment_type == 'face' and face_counter in face_map:
                 segment_path = face_map[face_counter]
+                # 確保使用處理後的檔案（_processed.mp4）
+                if not segment_path.endswith('_processed.mp4'):
+                    base_name = os.path.splitext(os.path.basename(segment_path))[0]
+                    processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
+                    if os.path.exists(processed_path):
+                        segment_path = processed_path
+                        print(f"    {i+1}. 👤 人臉段落 {face_counter} (已處理): {os.path.basename(segment_path)}")
+                    else:
+                        print(f"    {i+1}. 👤 人臉段落 {face_counter} (原始): {os.path.basename(segment_path)}")
+                else:
+                    print(f"    {i+1}. 👤 人臉段落 {face_counter}: {os.path.basename(segment_path)}")
                 ordered_segments.append(segment_path)
-                print(f"    {i+1}. 人臉段落 {face_counter}: {os.path.basename(segment_path)}")
                 face_counter += 1
             elif segment_type == 'slide' and slide_counter in slide_map:
                 segment_path = slide_map[slide_counter]
+                # 確保使用處理後的檔案（_processed.mp4）
+                if not segment_path.endswith('_processed.mp4'):
+                    base_name = os.path.splitext(os.path.basename(segment_path))[0]
+                    processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
+                    if os.path.exists(processed_path):
+                        segment_path = processed_path
+                        print(f"    {i+1}. 📊 簡報段落 {slide_counter} (已處理): {os.path.basename(segment_path)}")
+                    else:
+                        print(f"    {i+1}. 📊 簡報段落 {slide_counter} (原始): {os.path.basename(segment_path)}")
+                else:
+                    print(f"    {i+1}. 📊 簡報段落 {slide_counter}: {os.path.basename(segment_path)}")
                 ordered_segments.append(segment_path)
-                print(f"    {i+1}. 簡報段落 {slide_counter}: {os.path.basename(segment_path)}")
                 slide_counter += 1
             else:
                 print(f"    {i+1}. ⚠️ 跳過段落: {segment_type} (無對應文件)")

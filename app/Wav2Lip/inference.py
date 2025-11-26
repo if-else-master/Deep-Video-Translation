@@ -91,8 +91,9 @@ def face_detect(images):
 	pady1, pady2, padx1, padx2 = args.pads
 	for rect, image in zip(predictions, images):
 		if rect is None:
-			cv2.imwrite('temp/faulty_frame.jpg', image) # check this frame where the face was not detected.
-			raise ValueError('Face not detected! Ensure the video contains a face in all the frames.')
+			# 返回 None 表示這一幀沒有人臉，而不是拋出錯誤
+			results.append(None)
+			continue
 
 		y1 = max(0, rect[1] - pady1)
 		y2 = min(image.shape[0], rect[3] + pady2)
@@ -101,9 +102,33 @@ def face_detect(images):
 		
 		results.append([x1, y1, x2, y2])
 
-	boxes = np.array(results)
+	# 過濾掉 None 值
+	valid_results = [r for r in results if r is not None]
+	if len(valid_results) == 0:
+		raise ValueError('No faces detected in any frames! Cannot proceed with lip sync.')
+	
+	# 計算人臉幀比例
+	face_ratio = len(valid_results) / len(results)
+	print(f"  人臉檢測: {len(valid_results)}/{len(results)} 幀 ({face_ratio*100:.1f}%)")
+	
+	if face_ratio < 0.5:
+		raise ValueError(f'Too few faces detected ({face_ratio*100:.1f}% < 50%)! Cannot ensure quality lip sync.')
+	
+	boxes = np.array(valid_results)
 	if not args.nosmooth: boxes = get_smoothened_boxes(boxes, T=5)
-	results = [[image[y1: y2, x1:x2], (y1, y2, x1, x2)] for image, (x1, y1, x2, y2) in zip(images, boxes)]
+	
+	# 為沒有人臉的幀創建佔位符
+	valid_idx = 0
+	final_results = []
+	for i, (image, result) in enumerate(zip(images, results)):
+		if result is None:
+			final_results.append(None)
+		else:
+			x1, y1, x2, y2 = boxes[valid_idx]
+			final_results.append([image[y1: y2, x1:x2], (y1, y2, x1, x2)])
+			valid_idx += 1
+	
+	results = final_results
 
 	del detector
 	return results 
@@ -118,15 +143,43 @@ def datagen(frames, mels):
 			face_det_results = face_detect([frames[0]])
 	else:
 		print('Using the specified bounding box instead of face detection...')
+	
+	# 過濾掉 None 結果（沒有人臉的幀）
+	if args.box[0] == -1:
+		valid_frames = [(i, f, r) for i, (f, r) in enumerate(zip(frames, face_det_results)) if r is not None]
+		if len(valid_frames) == 0:
+			raise ValueError('No valid frames with faces detected!')
+		frame_indices, frames, face_det_results = zip(*valid_frames)
+		frames = list(frames)
+		face_det_results = list(face_det_results)
+	else:
+		# 使用指定的 bounding box
 		y1, y2, x1, x2 = args.box
 		face_det_results = [[f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
 
 	for i, m in enumerate(mels):
 		idx = 0 if args.static else i%len(frames)
 		frame_to_save = frames[idx].copy()
-		face, coords = face_det_results[idx].copy()
-
-		face = cv2.resize(face, (args.img_size, args.img_size))
+		
+		# 解包 face_det_results，確保數據有效
+		face_data = face_det_results[idx]
+		if isinstance(face_data, list) and len(face_data) == 2:
+			face, coords = face_data[0], face_data[1]
+		else:
+			raise ValueError(f"Invalid face_det_results format at index {idx}: {type(face_data)}")
+		
+		# 驗證 face 數據
+		if face is None or not isinstance(face, np.ndarray):
+			raise ValueError(f"Face data is None or invalid at index {idx}")
+		if face.size == 0 or face.shape[0] == 0 or face.shape[1] == 0:
+			raise ValueError(f"Face region is empty at index {idx}. Shape: {face.shape}")
+		
+		# 安全地 resize
+		try:
+			face = cv2.resize(face, (args.img_size, args.img_size))
+		except cv2.error as e:
+			print(f"❌ Resize 失敗 at frame {idx}: face shape={face.shape}, error={e}")
+			raise
 			
 		img_batch.append(face)
 		mel_batch.append(m)
@@ -157,8 +210,31 @@ def datagen(frames, mels):
 		yield img_batch, mel_batch, frame_batch, coords_batch
 
 mel_step_size = 16
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print('Using {} for inference.'.format(device))
+
+def get_device_with_fallback():
+    """智能選擇設備，自動處理不支援的設備類型"""
+    # 優先順序: CUDA > MPS > CPU
+    if torch.cuda.is_available():
+        return 'cuda'
+    
+    # 嘗試使用 MPS（Apple Silicon GPU）
+    if torch.backends.mps.is_available():
+        try:
+            # 測試 face_detection 是否支援 MPS
+            from face_detection import FaceAlignment, LandmarksType
+            test_detector = FaceAlignment(LandmarksType._2D, flip_input=False, device='mps')
+            del test_detector
+            print("✅ face_detection 模組支援 MPS，使用 MPS 加速")
+            return 'mps'
+        except (ValueError, RuntimeError) as e:
+            print(f"⚠️  MPS 可用但 face_detection 模組不支援 (錯誤: {type(e).__name__})")
+            print("   自動降級使用 CPU")
+            return 'cpu'
+    
+    return 'cpu'
+
+device = get_device_with_fallback()
+print(f"🖥️  Wav2Lip 推理設備: {device.upper()}")
 
 def _load(checkpoint_path):
 	if device == 'cuda':

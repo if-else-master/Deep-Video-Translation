@@ -234,8 +234,13 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
                 chunk,
                 config,
                 speaker_wav=speaker_wav,
-                gpt_cond_len=3,
+                gpt_cond_len=6,  # 增加條件長度以更好地捕捉說話者特徵
                 language=language_code,
+                temperature=0.75,  # 添加溫度參數以改善自然度
+                length_penalty=1.0,  # 長度懲罰參數
+                repetition_penalty=2.0,  # 重複懲罰參數
+                top_k=50,  # Top-K 採樣
+                top_p=0.85,  # Top-P 採樣
             )
             
             # 从字典中获取音频数据
@@ -264,8 +269,13 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
             text,
             config,
             speaker_wav=speaker_wav,
-            gpt_cond_len=3,
+            gpt_cond_len=6,  # 增加條件長度以更好地捕捉說話者特徵
             language=language_code,
+            temperature=0.75,  # 添加溫度參數以改善自然度
+            length_penalty=1.0,  # 長度懲罰參數
+            repetition_penalty=2.0,  # 重複懲罰參數
+            top_k=50,  # Top-K 採樣
+            top_p=0.85,  # Top-P 採樣
         )
 
         # 从字典中获取音频数据
