@@ -393,14 +393,61 @@
         <div class="header">
             <h1>AI 深度影片翻譯服務</h1>
             <p>🌍 支援 8 種語言：日文 • 英文 • 中文 • 德文 • 法文 • 俄文 • 義大利文 • 西班牙文</p>
+            <p style="margin-top: 8px; font-size: 0.95em;">🤖 多 API 支援：Gemini • OpenAI • Claude • 本地 LLM &nbsp;|&nbsp; 🎤 TTS 引擎：XTTS-v2 • F5-TTS</p>
         </div>
 
         <div class="content">
             <form id="translationForm">
-                <!-- API Key -->
+                <!-- API 提供者選擇 -->
                 <div class="form-group">
-                    <label for="apiKey">🔑 Gemini API Key</label>
-                    <input type="password" id="apiKey" name="api_key" placeholder="輸入您的 Gemini API Key" required>
+                    <label for="apiProvider">🤖 翻譯 API 提供者</label>
+                    <select id="apiProvider" name="api_provider" required>
+                        <option value="gemini" selected>Google Gemini</option>
+                        <option value="openai">OpenAI (GPT-4o-mini)</option>
+                        <option value="claude">Anthropic Claude (Haiku)</option>
+                        <option value="local_llm">本地 LLM (Ollama/LM Studio)</option>
+                    </select>
+                </div>
+
+                <!-- API Key -->
+                <div class="form-group" id="apiKeyGroup">
+                    <label for="apiKey" id="apiKeyLabel">🔑 Gemini API Key</label>
+                    <input type="password" id="apiKey" name="api_key" placeholder="輸入您的 API Key" required>
+                </div>
+
+                <!-- 本地 LLM 配置（僅當選擇本地 LLM 時顯示） -->
+                <div class="form-group" id="localLlmConfig" style="display: none;">
+                    <label>🖥️ 本地 LLM 配置</label>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                        <div style="margin-bottom: 10px;">
+                            <label for="localLlmUrl" style="font-size: 0.9em; color: #666;">API 端點 URL</label>
+                            <input type="text" id="localLlmUrl" name="local_llm_url" value="http://localhost:11434/api/generate" placeholder="Ollama: http://localhost:11434/api/generate" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-family: monospace;">
+                        </div>
+                        <div>
+                            <label for="localLlmModel" style="font-size: 0.9em; color: #666;">模型名稱</label>
+                            <input type="text" id="localLlmModel" name="local_llm_model" value="llama3.2" placeholder="例如: llama3.2, qwen2.5, mistral" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                        </div>
+                        <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 5px; font-size: 0.85em; color: #856404;">
+                            💡 <strong>提示：</strong>
+                            <ul style="margin: 5px 0 0 15px; line-height: 1.6;">
+                                <li>Ollama 默認端口: 11434</li>
+                                <li>LM Studio 默認端口: 1234</li>
+                                <li>請確保本地服務已啟動</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TTS 語音克隆引擎選擇 -->
+                <div class="form-group">
+                    <label for="ttsEngine">🎤 語音克隆引擎</label>
+                    <select id="ttsEngine" name="tts_engine" required>
+                        <option value="xtts" selected>XTTS-v2 (Coqui TTS)</option>
+                        <option value="f5tts">F5-TTS (高品質)</option>
+                    </select>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        💡 XTTS-v2 速度較快；F5-TTS 品質較高但需要更多計算資源
+                    </small>
                 </div>
 
                 <!-- 影片上傳區域 -->
@@ -607,6 +654,48 @@
             }
         });
 
+        // API 提供者切換處理
+        const apiProviderSelect = document.getElementById('apiProvider');
+        const apiKeyGroup = document.getElementById('apiKeyGroup');
+        const apiKeyLabel = document.getElementById('apiKeyLabel');
+        const apiKeyInput = document.getElementById('apiKey');
+        const localLlmConfig = document.getElementById('localLlmConfig');
+
+        apiProviderSelect.addEventListener('change', function() {
+            const provider = this.value;
+            
+            // 更新 API Key 標籤和提示
+            const labels = {
+                'gemini': '🔑 Gemini API Key',
+                'openai': '🔑 OpenAI API Key',
+                'claude': '🔑 Claude API Key',
+                'local_llm': '🔑 API Key (本地 LLM 不需要)'
+            };
+            
+            const placeholders = {
+                'gemini': '輸入您的 Gemini API Key',
+                'openai': '輸入您的 OpenAI API Key (sk-...)',
+                'claude': '輸入您的 Claude API Key (sk-ant-...)',
+                'local_llm': '本地 LLM 通常不需要 API Key'
+            };
+            
+            apiKeyLabel.textContent = labels[provider];
+            apiKeyInput.placeholder = placeholders[provider];
+            
+            // 本地 LLM 配置顯示/隱藏
+            if (provider === 'local_llm') {
+                localLlmConfig.style.display = 'block';
+                apiKeyInput.required = false;  // 本地 LLM 不需要 API Key
+                apiKeyInput.value = 'local';   // 設置一個默認值
+            } else {
+                localLlmConfig.style.display = 'none';
+                apiKeyInput.required = true;
+                if (apiKeyInput.value === 'local') {
+                    apiKeyInput.value = '';
+                }
+            }
+        });
+
         // 拖放上傳功能
         uploadArea.addEventListener('click', () => videoFile.click());
 
@@ -775,6 +864,16 @@
             formData.append('enable_slide_translation', document.getElementById('enableSlideTranslation').checked);
             formData.append('min_segment_duration', document.getElementById('minSegmentDuration').value);
             formData.append('hash_threshold', document.getElementById('hashThreshold').value);
+            
+            // 添加 API 提供者和 TTS 引擎
+            formData.append('api_provider', document.getElementById('apiProvider').value);
+            formData.append('tts_engine', document.getElementById('ttsEngine').value);
+            
+            // 添加本地 LLM 配置（如果選擇了本地 LLM）
+            if (document.getElementById('apiProvider').value === 'local_llm') {
+                formData.append('local_llm_url', document.getElementById('localLlmUrl').value);
+                formData.append('local_llm_model', document.getElementById('localLlmModel').value);
+            }
             
             // 添加輸出目錄
             const outputDirectory = document.getElementById('outputDirectory').value.trim() || 'audio_files';

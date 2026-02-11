@@ -68,3 +68,11 @@ mesop
 # Flask Web Framework
 flask==3.0.0
 werkzeug
+
+cached_path
+datasets
+x-transformers>=1.31.14
+rjieba
+unidecode
+torchdiffeq
+tomli

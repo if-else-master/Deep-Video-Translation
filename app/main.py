@@ -1,5 +1,9 @@
 import os
 import sys
+
+# 設置環境變數，解決 Mac MPS 設備兼容性問題（必須在導入 torch 之前設置）
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
 import threading
 import urllib.request
 import uuid
@@ -13,6 +17,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'Wav2Lip'))
 
 from txtvoice import voice
 from xttsv import xttsv
+from f5ttsv import f5ttsv
 from Wav2Lip.inference import run_inference
 
 # ImageHash_ppt 功能導入
@@ -216,13 +221,11 @@ class DeepVideoTranslationApp:
         if self.task:
             self.task.update_progress(progress, status)
 
-    # 投影片翻譯功能
-    def translate_with_gemini(self, text, target_lang="Japanese"):
-        """使用 Gemini API 翻譯文字"""
-        api_key = self.api_key
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-        headers = {"Content-Type": "application/json"}
-        
+    # API 翻譯功能
+    # 支援的 API: Gemini, OpenAI, Claude, 本地 LLM
+    
+    def get_translation_prompt(self, target_lang):
+        """獲取翻譯提示詞"""
         lang_prompts = {
             "Japanese": "Translate the following text to Japanese. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
             "English": "Translate the following text to English. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
@@ -233,8 +236,69 @@ class DeepVideoTranslationApp:
             "Italian": "Translate the following text to Italian. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: ",
             "Spanish": "Translate the following text to Spanish. Output ONLY the translated text, no explanations, no additional words, no prefixes like 'Translation:' or 'Here is:'\n\nText: "
         }
+        return lang_prompts.get(target_lang, lang_prompts["Japanese"])
+    
+    def clean_translation_result(self, translated):
+        """清理翻譯結果 - 移除常見的前綴和說明文字"""
+        clean_result = translated.strip()
         
-        prompt = lang_prompts.get(target_lang, lang_prompts["Japanese"]) + text
+        # 移除常見的英文前綴
+        english_prefixes = [
+            "Here is the translation:",
+            "Here's the translation:",
+            "Translation:",
+            "The translation is:",
+            "Translated text:",
+            "Here is:",
+            "Here's:",
+            "Output:",
+            "Result:"
+        ]
+        
+        # 移除常見的中文前綴
+        chinese_prefixes = [
+            "翻譯結果：",
+            "翻譯如下：",
+            "翻譯為：",
+            "翻譯：",
+            "譯文：",
+            "翻譯後："
+        ]
+        
+        for prefix in english_prefixes + chinese_prefixes:
+            if clean_result.startswith(prefix):
+                clean_result = clean_result[len(prefix):].strip()
+                break
+        
+        # 移除開頭的引號、冒號等符號
+        clean_result = re.sub(r'^["\':：\s]+', '', clean_result)
+        clean_result = re.sub(r'["\':：\s]+$', '', clean_result)
+        
+        return clean_result
+    
+    def translate(self, text, target_lang="Japanese"):
+        """統一翻譯接口 - 根據 api_provider 選擇對應的翻譯 API"""
+        api_provider = getattr(self, 'api_provider', 'gemini')
+        
+        if api_provider == 'gemini':
+            return self.translate_with_gemini(text, target_lang)
+        elif api_provider == 'openai':
+            return self.translate_with_openai(text, target_lang)
+        elif api_provider == 'claude':
+            return self.translate_with_claude(text, target_lang)
+        elif api_provider == 'local_llm':
+            return self.translate_with_local_llm(text, target_lang)
+        else:
+            print(f"⚠️ 未知的 API 提供者: {api_provider}，使用 Gemini 作為默認")
+            return self.translate_with_gemini(text, target_lang)
+    
+    def translate_with_gemini(self, text, target_lang="Japanese"):
+        """使用 Gemini API 翻譯文字"""
+        api_key = self.api_key
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        
+        prompt = self.get_translation_prompt(target_lang) + text
         payload = {
             "contents": [{"parts": [{"text": prompt}]}]
         }
@@ -243,49 +307,136 @@ class DeepVideoTranslationApp:
             r = requests.post(url, headers=headers, json=payload)
             if r.status_code == 200:
                 translated = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                
-                # 清理翻譯結果 - 移除常見的前綴和說明文字
-                clean_result = translated.strip()
-                
-                # 移除常見的英文前綴
-                english_prefixes = [
-                    "Here is the translation:",
-                    "Here's the translation:",
-                    "Translation:",
-                    "The translation is:",
-                    "Translated text:",
-                    "Here is:",
-                    "Here's:",
-                    "Output:",
-                    "Result:"
-                ]
-                
-                # 移除常見的中文前綴
-                chinese_prefixes = [
-                    "翻譯結果：",
-                    "翻譯如下：",
-                    "翻譯為：",
-                    "翻譯：",
-                    "譯文：",
-                    "翻譯後："
-                ]
-                
-                for prefix in english_prefixes + chinese_prefixes:
-                    if clean_result.startswith(prefix):
-                        clean_result = clean_result[len(prefix):].strip()
-                        break
-                
-                # 移除開頭的引號、冒號等符號
-                clean_result = re.sub(r'^["\':：\s]+', '', clean_result)
-                clean_result = re.sub(r'["\':：\s]+$', '', clean_result)
-                
-                return clean_result
+                return self.clean_translation_result(translated)
             else:
-                print("翻譯失敗:", r.text)
+                print("Gemini 翻譯失敗:", r.text)
                 return text
         except Exception as e:
-            print(f"翻譯錯誤: {e}")
+            print(f"Gemini 翻譯錯誤: {e}")
             return text
+    
+    def translate_with_openai(self, text, target_lang="Japanese"):
+        """使用 OpenAI API 翻譯文字"""
+        api_key = self.api_key
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        prompt = self.get_translation_prompt(target_lang) + text
+        payload = {
+            "model": "gpt-4o-mini",  # 使用經濟實惠的模型
+            "messages": [
+                {"role": "system", "content": "You are a professional translator. Only output the translation, nothing else."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 2000
+        }
+        
+        try:
+            r = requests.post(url, headers=headers, json=payload)
+            if r.status_code == 200:
+                translated = r.json()["choices"][0]["message"]["content"]
+                return self.clean_translation_result(translated)
+            else:
+                print("OpenAI 翻譯失敗:", r.text)
+                return text
+        except Exception as e:
+            print(f"OpenAI 翻譯錯誤: {e}")
+            return text
+    
+    def translate_with_claude(self, text, target_lang="Japanese"):
+        """使用 Claude API 翻譯文字"""
+        api_key = self.api_key
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01"
+        }
+        
+        prompt = self.get_translation_prompt(target_lang) + text
+        payload = {
+            "model": "claude-3-haiku-20240307",  # 使用經濟實惠的模型
+            "max_tokens": 2000,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+        
+        try:
+            r = requests.post(url, headers=headers, json=payload)
+            if r.status_code == 200:
+                translated = r.json()["content"][0]["text"]
+                return self.clean_translation_result(translated)
+            else:
+                print("Claude 翻譯失敗:", r.text)
+                return text
+        except Exception as e:
+            print(f"Claude 翻譯錯誤: {e}")
+            return text
+    
+    def translate_with_local_llm(self, text, target_lang="Japanese"):
+        """使用本地 LLM API 翻譯文字（兼容 Ollama、LM Studio 等）"""
+        # 本地 LLM 端點（默認使用 Ollama 的格式）
+        local_url = getattr(self, 'local_llm_url', 'http://localhost:11434/api/generate')
+        local_model = getattr(self, 'local_llm_model', 'llama3.2')
+        
+        prompt = self.get_translation_prompt(target_lang) + text
+        
+        # 嘗試 Ollama 格式
+        try:
+            payload = {
+                "model": local_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3
+                }
+            }
+            
+            r = requests.post(local_url, json=payload, timeout=60)
+            if r.status_code == 200:
+                response_data = r.json()
+                # Ollama 格式
+                if "response" in response_data:
+                    translated = response_data["response"]
+                    return self.clean_translation_result(translated)
+                # OpenAI 兼容格式 (LM Studio)
+                elif "choices" in response_data:
+                    translated = response_data["choices"][0]["message"]["content"]
+                    return self.clean_translation_result(translated)
+            else:
+                print(f"本地 LLM 翻譯失敗 (狀態碼 {r.status_code}): {r.text}")
+        except requests.exceptions.ConnectionError:
+            print("⚠️ 無法連接到本地 LLM 服務，請確認 Ollama 或 LM Studio 已啟動")
+        except Exception as e:
+            print(f"本地 LLM 翻譯錯誤: {e}")
+        
+        # 嘗試 OpenAI 兼容格式 (LM Studio 默認端口)
+        try:
+            lm_studio_url = getattr(self, 'local_llm_url', 'http://localhost:1234/v1/chat/completions')
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "model": local_model,
+                "messages": [
+                    {"role": "system", "content": "You are a professional translator. Only output the translation, nothing else."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.3
+            }
+            
+            r = requests.post(lm_studio_url, headers=headers, json=payload, timeout=60)
+            if r.status_code == 200:
+                translated = r.json()["choices"][0]["message"]["content"]
+                return self.clean_translation_result(translated)
+        except Exception as e:
+            print(f"LM Studio 格式也失敗: {e}")
+        
+        print("⚠️ 本地 LLM 翻譯失敗，返回原文")
+        return text
 
     def remove_text_with_inpainting(self, img, boxes):
         """根據 OCR 回傳的 boxes 四點座標，製作 mask 並 inpaint"""
@@ -396,8 +547,8 @@ class DeepVideoTranslationApp:
         # 移除原文文字
         img_clean = self.remove_text_with_inpainting(img, boxes)
 
-        # 翻譯所有文字
-        translated = [self.translate_with_gemini(t, target_lang) for t in orig_texts]
+        # 翻譯所有文字（使用統一翻譯接口）
+        translated = [self.translate(t, target_lang) for t in orig_texts]
         print(f"📝 翻譯結果: {translated}")
 
         # 轉為 PIL 進行貼字
@@ -1067,9 +1218,20 @@ class DeepVideoTranslationApp:
         # 確保目錄存在
         self.ensure_directory_exists(face_dir)
         
+        # 清理舊的處理文件，確保每次都重新處理
+        self.log("🧹 清理舊的處理緩存...")
+        for f in os.listdir(face_dir):
+            if '_processed' in f or '_audio' in f:
+                old_file = os.path.join(face_dir, f)
+                try:
+                    os.remove(old_file)
+                    print(f"  🗑️ 已刪除: {f}")
+                except Exception as e:
+                    print(f"  ⚠️ 無法刪除 {f}: {e}")
+        
         # 只處理原始段落文件（編號為 XX.mp4，不含 _processed）
         face_files = sorted([f for f in os.listdir(face_dir) 
-                           if f.endswith('.mp4') and not '_processed' in f])
+                           if f.endswith('.mp4') and not '_processed' in f and not '_audio' in f])
         
         if not face_files:
             self.log("⚠️ 沒有找到需要處理的人臉段落")
@@ -1084,19 +1246,14 @@ class DeepVideoTranslationApp:
             base_name = os.path.splitext(filename)[0]
             processed_path = os.path.join(face_dir, f"{base_name}_processed.mp4")
             
-            # 如果已經處理過，跳過
-            if os.path.exists(processed_path):
-                self.log(f"  ✅ 段落 {filename} 已處理過，跳過")
-                processed_segments.append(processed_path)
-                continue
-            
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
                 self.log(f"  🎵 正在處理音頻...")
                 api_key = self.api_key
+                api_provider = getattr(self, 'api_provider', 'gemini')
                 
                 try:
-                    translated_text = voice(input_path, api_key, language)
+                    translated_text = voice(input_path, api_key, language, api_provider)
                 except Exception as audio_error:
                     print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
                     translated_text = ""
@@ -1119,8 +1276,15 @@ class DeepVideoTranslationApp:
                 temp_audio = os.path.join(face_dir, f"{base_name}_audio.wav")
                 
                 try:
-                    # 使用段落文件本身作為參考音頻進行語音克隆
-                    audio_path = xttsv(translated_text, input_path, temp_audio, language)
+                    # 根據 TTS 引擎選擇進行語音克隆
+                    tts_engine = getattr(self, 'tts_engine', 'xtts')
+                    
+                    if tts_engine == 'f5tts':
+                        print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
+                        audio_path = f5ttsv(translated_text, input_path, temp_audio, language)
+                    else:
+                        print(f"  🎤 使用 XTTS-v2 引擎進行語音克隆...")
+                        audio_path = xttsv(translated_text, input_path, temp_audio, language)
                 except Exception as tts_error:
                     print(f"  ⚠️ 語音克隆失敗: {tts_error}")
                     # 如果語音克隆失敗，直接複製原始影片
@@ -1216,9 +1380,20 @@ class DeepVideoTranslationApp:
         # 確保目錄存在
         self.ensure_directory_exists(ppt_dir)
         
+        # 清理舊的處理文件，確保每次都重新處理
+        self.log("🧹 清理舊的處理緩存...")
+        for f in os.listdir(ppt_dir):
+            if '_processed' in f or '_audio' in f or '_temp' in f:
+                old_file = os.path.join(ppt_dir, f)
+                try:
+                    os.remove(old_file)
+                    print(f"  🗑️ 已刪除: {f}")
+                except Exception as e:
+                    print(f"  ⚠️ 無法刪除 {f}: {e}")
+        
         # 只處理原始段落文件（編號為 XX.mp4，不含 _processed）
         ppt_files = sorted([f for f in os.listdir(ppt_dir) 
-                          if f.endswith('.mp4') and not '_processed' in f])
+                          if f.endswith('.mp4') and not '_processed' in f and not '_audio' in f and not '_temp' in f])
         
         if not ppt_files:
             self.log("⚠️ 沒有找到需要處理的簡報段落")
@@ -1233,19 +1408,14 @@ class DeepVideoTranslationApp:
             base_name = os.path.splitext(filename)[0]
             processed_path = os.path.join(ppt_dir, f"{base_name}_processed.mp4")
             
-            # 如果已經處理過，跳過
-            if os.path.exists(processed_path):
-                self.log(f"  ✅ 段落 {filename} 已處理過，跳過")
-                processed_segments.append(processed_path)
-                continue
-            
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
                 self.log(f"  🎵 正在處理音頻...")
                 api_key = self.api_key
+                api_provider = getattr(self, 'api_provider', 'gemini')
                 
                 try:
-                    translated_text = voice(input_path, api_key, language)
+                    translated_text = voice(input_path, api_key, language, api_provider)
                 except Exception as audio_error:
                     print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
                     translated_text = ""
@@ -1260,8 +1430,15 @@ class DeepVideoTranslationApp:
                     temp_audio = os.path.join(ppt_dir, f"{base_name}_audio.wav")
                     
                     try:
-                        # 使用段落文件本身作為參考音頻進行語音克隆
-                        xttsv(translated_text, input_path, temp_audio, language)
+                        # 根據 TTS 引擎選擇進行語音克隆
+                        tts_engine = getattr(self, 'tts_engine', 'xtts')
+                        
+                        if tts_engine == 'f5tts':
+                            print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
+                            f5ttsv(translated_text, input_path, temp_audio, language)
+                        else:
+                            print(f"  🎤 使用 XTTS-v2 引擎進行語音克隆...")
+                            xttsv(translated_text, input_path, temp_audio, language)
                     except Exception as tts_error:
                         print(f"  ⚠️ 語音克隆失敗: {tts_error}")
                         temp_audio = None
@@ -1438,11 +1615,10 @@ class DeepVideoTranslationApp:
             img_clean = self.remove_text_with_inpainting(frame, boxes)
             print(f"      🧹 原文移除完成")
             
-            # 翻譯文字
+            # 翻譯文字（使用統一翻譯接口，支援多種 API）
             translated = []
             for i, text in enumerate(orig_texts):
-                # 使用 self.api_key（在類初始化時已設定）
-                translated_text = self.translate_with_gemini(text, target_lang)
+                translated_text = self.translate(text, target_lang)
                 translated.append(translated_text)
                 print(f"      📝 翻譯 {i+1}: '{text}' -> '{translated_text}'")
             
@@ -1561,6 +1737,24 @@ class DeepVideoTranslationApp:
         # 使用 ffmpeg 合併段落 - 多種方法嘗試
         print(f"🔗 正在合併 {len(ordered_segments)} 個段落...")
         
+        # 預處理：確保所有視頻都有音頻流
+        print("🔧 預處理：檢查並添加缺失的音頻流...")
+        prepared_segments = []
+        for i, segment in enumerate(ordered_segments):
+            if self.check_has_audio_stream(segment):
+                prepared_segments.append(segment)
+            else:
+                # 沒有音頻流，添加靜音音頻
+                print(f"  ⚠️ 段落 {i+1} 沒有音頻流，添加靜音音頻...")
+                segment_with_audio = segment.replace('.mp4', '_with_audio.mp4')
+                if self.add_silent_audio_to_video(segment, segment_with_audio):
+                    prepared_segments.append(segment_with_audio)
+                else:
+                    # 如果添加靜音失敗，仍使用原視頻
+                    prepared_segments.append(segment)
+        
+        ordered_segments = prepared_segments
+        
         # 方法1：使用解析度統一的filter_complex進行合併
         try:
             print("🔧 方法1: 使用 filter_complex 合併 (自動統一解析度)...")
@@ -1621,9 +1815,15 @@ class DeepVideoTranslationApp:
             normalized_segments = []
             for i, segment in enumerate(ordered_segments):
                 normalized_path = segment.replace('.mp4', f'_normalized_{i}.mp4')
-                command = f'ffmpeg -y -i "{segment}" -vf scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1:1 -af aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono -c:v libx264 -c:a aac "{normalized_path}"'
+                # 使用列表形式避免 shell 解析括號問題
+                cmd_args = [
+                    'ffmpeg', '-y', '-i', segment,
+                    '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1:1',
+                    '-af', 'aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono',
+                    '-c:v', 'libx264', '-c:a', 'aac', normalized_path
+                ]
                 print(f"  📐 統一段落 {i+1} 解析度...")
-                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                result = subprocess.run(cmd_args, capture_output=True, text=True)
                 
                 if result.returncode == 0:
                     normalized_segments.append(normalized_path)
@@ -1697,6 +1897,56 @@ class DeepVideoTranslationApp:
         else:
                          raise Exception("所有合併方法都失敗且無可用段落")
 
+    def check_has_audio_stream(self, video_path):
+        """檢查視頻是否有音頻流"""
+        try:
+            command = f'ffprobe -v quiet -print_format json -show_streams "{video_path}"'
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                streams = data.get('streams', [])
+                audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
+                return len(audio_streams) > 0
+            return False
+        except Exception as e:
+            print(f"⚠️ 檢查音頻流失敗: {e}")
+            return False
+    
+    def add_silent_audio_to_video(self, input_path, output_path):
+        """為沒有音頻的視頻添加靜音音頻軌"""
+        try:
+            # 獲取視頻時長
+            command = f'ffprobe -v quiet -print_format json -show_format "{input_path}"'
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                duration = float(data.get('format', {}).get('duration', 10))
+            else:
+                duration = 10
+            
+            # 使用 anullsrc 生成靜音音頻並與視頻合併
+            cmd_args = [
+                'ffmpeg', '-y',
+                '-i', input_path,
+                '-f', 'lavfi', '-i', f'anullsrc=r=48000:cl=stereo',
+                '-t', str(duration),
+                '-c:v', 'copy', '-c:a', 'aac', '-shortest',
+                output_path
+            ]
+            result = subprocess.run(cmd_args, capture_output=True, text=True)
+            
+            if result.returncode == 0 and os.path.exists(output_path):
+                print(f"  ✅ 已添加靜音音頻: {output_path}")
+                return True
+            else:
+                print(f"  ⚠️ 添加靜音音頻失敗: {result.stderr}")
+                return False
+        except Exception as e:
+            print(f"  ⚠️ 添加靜音音頻異常: {e}")
+            return False
+
     def verify_output_file(self, output_path):
         """驗證輸出文件"""
         if os.path.exists(output_path):
@@ -1758,12 +2008,24 @@ class DeepVideoTranslationApp:
         print(f"  ✅ 逐個合併完成")
 
     def process(self, input_path, output_path, api_key, language, slide_language, 
-                enable_slide_translation, min_segment_duration, hash_threshold):
+                enable_slide_translation, min_segment_duration, hash_threshold,
+                tts_engine='xtts', api_provider='gemini', local_llm_url='http://localhost:11434/api/generate',
+                local_llm_model='llama3.2'):
         """處理影片的主要方法"""
         # 設置參數
         self.api_key = api_key
         self.min_segment_duration = min_segment_duration
         self.hash_threshold = hash_threshold
+        
+        # 新增：TTS 引擎和 API 提供者設置
+        self.tts_engine = tts_engine
+        self.api_provider = api_provider
+        self.local_llm_url = local_llm_url
+        self.local_llm_model = local_llm_model
+        
+        self.log(f"🔧 配置：TTS 引擎={tts_engine}, API 提供者={api_provider}")
+        if api_provider == 'local_llm':
+            self.log(f"🔧 本地 LLM：URL={local_llm_url}, 模型={local_llm_model}")
         
         # 驗證輸入
         if not all([api_key, input_path, output_path]):
@@ -1904,6 +2166,12 @@ def process_video():
         custom_output_filename = request.form.get('output_filename', '').strip()
         output_directory = request.form.get('output_directory', 'audio_files').strip()
         
+        # 新增：TTS 引擎和 API 提供者參數
+        tts_engine = request.form.get('tts_engine', 'xtts')
+        api_provider = request.form.get('api_provider', 'gemini')
+        local_llm_url = request.form.get('local_llm_url', 'http://localhost:11434/api/generate')
+        local_llm_model = request.form.get('local_llm_model', 'llama3.2')
+        
         # 保存上傳的影片
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         filename = secure_filename(video_file.filename)
@@ -1962,7 +2230,11 @@ def process_video():
             'slide_language': slide_language,
             'enable_slide_translation': enable_slide_translation,
             'min_segment_duration': min_segment_duration,
-            'hash_threshold': hash_threshold
+            'hash_threshold': hash_threshold,
+            'tts_engine': tts_engine,
+            'api_provider': api_provider,
+            'local_llm_url': local_llm_url,
+            'local_llm_model': local_llm_model
         }
         
         task = VideoProcessingTask(task_id, params)
@@ -2009,7 +2281,11 @@ def process_video_task(task_id):
             slide_language=params['slide_language'],
             enable_slide_translation=params['enable_slide_translation'],
             min_segment_duration=params['min_segment_duration'],
-            hash_threshold=params['hash_threshold']
+            hash_threshold=params['hash_threshold'],
+            tts_engine=params.get('tts_engine', 'xtts'),
+            api_provider=params.get('api_provider', 'gemini'),
+            local_llm_url=params.get('local_llm_url', 'http://localhost:11434/api/generate'),
+            local_llm_model=params.get('local_llm_model', 'llama3.2')
         )
         
         task.status = 'completed'
