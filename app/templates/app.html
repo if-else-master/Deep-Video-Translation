@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deep Video Translation - 影片智能翻譯系統</title>
+    <title>Deep Video Translation - AI 影片智能翻譯系統</title>
     <style>
         * {
             margin: 0;
@@ -11,43 +11,63 @@
             box-sizing: border-box;
         }
 
+        :root {
+            --color-black: #000000;
+            --color-dark: #0f0f0f;
+            --color-gray-900: #1a1a1a;
+            --color-gray-800: #2d2d2d;
+            --color-gray-700: #404040;
+            --color-gray-600: #525252;
+            --color-gray-500: #6b6b6b;
+            --color-gray-400: #8a8a8a;
+            --color-gray-300: #a3a3a3;
+            --color-gray-200: #c4c4c4;
+            --color-gray-100: #e0e0e0;
+            --color-white: #ffffff;
+        }
+
         body {
-            font-family: 'Segoe UI', 'Microsoft JhengHei', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--color-black);
+            color: var(--color-gray-200);
             min-height: 100vh;
             padding: 20px;
-            color: #333;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            background: var(--color-dark);
+            border-radius: 12px;
+            border: 1px solid var(--color-gray-900);
             overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--color-gray-900);
+            color: var(--color-white);
             padding: 30px;
             text-align: center;
+            border-bottom: 1px solid var(--color-gray-800);
         }
 
         .header h1 {
-            font-size: 2.5em;
+            font-size: 2.2em;
             margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            font-weight: 700;
+            letter-spacing: -0.5px;
         }
 
         .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
+            font-size: 0.95em;
+            color: var(--color-gray-300);
+            line-height: 1.6;
         }
 
         .content {
             padding: 40px;
+            background: var(--color-dark);
         }
 
         .form-group {
@@ -58,17 +78,21 @@
             display: block;
             font-weight: 600;
             margin-bottom: 8px;
-            color: #555;
+            color: var(--color-gray-100);
             font-size: 0.95em;
         }
 
         .form-group input[type="text"],
         .form-group input[type="password"],
-        .form-group select {
+        .form-group input[type="email"],
+        .form-group select,
+        .form-group input[type="number"] {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
+            border: 1px solid var(--color-gray-700);
+            background: var(--color-gray-900);
+            color: var(--color-white);
+            border-radius: 6px;
             font-size: 1em;
             transition: all 0.3s;
         }
@@ -76,54 +100,62 @@
         .form-group input:focus,
         .form-group select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: var(--color-gray-500);
+            background: var(--color-gray-800);
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: var(--color-gray-400);
+            font-size: 0.85em;
         }
 
         .upload-area {
-            border: 3px dashed #667eea;
-            border-radius: 20px;
+            border: 2px dashed var(--color-gray-700);
+            border-radius: 8px;
             padding: 60px 20px;
             text-align: center;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            background: var(--color-gray-900);
             transition: all 0.3s;
             cursor: pointer;
             position: relative;
         }
 
         .upload-area.dragover {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
-            border-color: #764ba2;
-            transform: scale(1.02);
+            background: var(--color-gray-800);
+            border-color: var(--color-gray-500);
+            transform: scale(1.01);
         }
 
         .upload-area:hover {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            background: var(--color-gray-800);
+            border-color: var(--color-gray-600);
         }
 
         .upload-icon {
             font-size: 4em;
             margin-bottom: 20px;
-            opacity: 0.7;
+            opacity: 0.5;
         }
 
         .upload-text {
             font-size: 1.2em;
-            color: #555;
+            color: var(--color-gray-200);
             margin-bottom: 10px;
         }
 
         .upload-subtext {
             font-size: 0.9em;
-            color: #999;
+            color: var(--color-gray-500);
         }
 
         .file-info {
             margin-top: 15px;
             padding: 15px;
-            background: #f0f8ff;
-            border-radius: 10px;
-            border-left: 4px solid #667eea;
+            background: var(--color-gray-800);
+            border-radius: 6px;
+            border-left: 3px solid var(--color-white);
             display: none;
         }
 
@@ -147,9 +179,10 @@
             display: flex;
             align-items: center;
             padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
+            background: var(--color-gray-800);
+            border-radius: 6px;
             margin-bottom: 15px;
+            border: 1px solid var(--color-gray-700);
         }
 
         .checkbox-group input[type="checkbox"] {
@@ -163,11 +196,13 @@
             cursor: pointer;
             margin: 0;
             font-weight: 500;
+            color: var(--color-gray-200);
         }
 
         .advanced-settings {
-            background: #f8f9fa;
-            border-radius: 10px;
+            background: var(--color-gray-800);
+            border-radius: 6px;
+            border: 1px solid var(--color-gray-700);
             padding: 20px;
             margin-top: 15px;
             max-height: 0;
@@ -176,8 +211,13 @@
         }
 
         .advanced-settings.show {
-            max-height: 500px;
+            max-height: 800px;
             padding: 20px;
+        }
+
+        .advanced-settings h3 {
+            color: var(--color-white);
+            margin-bottom: 15px;
         }
 
         .settings-grid {
@@ -186,31 +226,45 @@
             gap: 15px;
         }
 
+        .info-box {
+            background: var(--color-gray-700);
+            border: 1px solid var(--color-gray-600);
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: var(--color-gray-300);
+        }
+
+        .info-box strong {
+            color: var(--color-white);
+        }
+
         .btn {
             padding: 15px 30px;
             font-size: 1.1em;
             font-weight: 600;
             border: none;
-            border-radius: 10px;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.3s;
             display: inline-block;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--color-white);
+            color: var(--color-black);
             width: 100%;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
         }
 
         .btn-primary:hover:not(:disabled) {
+            background: var(--color-gray-100);
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+            box-shadow: 0 10px 20px rgba(255, 255, 255, 0.1);
         }
 
         .btn-primary:disabled {
-            opacity: 0.6;
+            opacity: 0.5;
             cursor: not-allowed;
         }
 
@@ -218,8 +272,9 @@
             display: none;
             margin-top: 30px;
             padding: 25px;
-            background: #f8f9fa;
-            border-radius: 15px;
+            background: var(--color-gray-800);
+            border-radius: 8px;
+            border: 1px solid var(--color-gray-700);
         }
 
         .progress-container.show {
@@ -230,7 +285,7 @@
         .progress-label {
             font-weight: 600;
             margin-bottom: 10px;
-            color: #555;
+            color: var(--color-gray-100);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -239,21 +294,22 @@
         .progress-bar-container {
             width: 100%;
             height: 30px;
-            background: #e0e0e0;
-            border-radius: 15px;
+            background: var(--color-gray-900);
+            border-radius: 6px;
             overflow: hidden;
             position: relative;
+            border: 1px solid var(--color-gray-700);
         }
 
         .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            background: var(--color-white);
             width: 0%;
             transition: width 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
+            color: var(--color-black);
             font-weight: 600;
             font-size: 0.9em;
         }
@@ -262,13 +318,13 @@
             margin-top: 20px;
             max-height: 300px;
             overflow-y: auto;
-            background: #1e1e1e;
-            border-radius: 10px;
+            background: var(--color-black);
+            border-radius: 6px;
             padding: 15px;
             font-family: 'Courier New', monospace;
             font-size: 0.85em;
-            color: #00ff00;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+            color: var(--color-gray-300);
+            border: 1px solid var(--color-gray-800);
         }
 
         .log-container::-webkit-scrollbar {
@@ -276,13 +332,13 @@
         }
 
         .log-container::-webkit-scrollbar-track {
-            background: #2a2a2a;
-            border-radius: 10px;
+            background: var(--color-gray-900);
+            border-radius: 6px;
         }
 
         .log-container::-webkit-scrollbar-thumb {
-            background: #667eea;
-            border-radius: 10px;
+            background: var(--color-gray-600);
+            border-radius: 6px;
         }
 
         .log-line {
@@ -311,19 +367,19 @@
         .status-badge {
             display: inline-block;
             padding: 5px 15px;
-            border-radius: 20px;
+            border-radius: 4px;
             font-size: 0.85em;
             font-weight: 600;
         }
 
         .status-badge.ready {
-            background: #51cf66;
-            color: white;
+            background: var(--color-gray-700);
+            color: var(--color-white);
         }
 
         .status-badge.processing {
-            background: #667eea;
-            color: white;
+            background: var(--color-white);
+            color: var(--color-black);
         }
 
         .status-badge.error {
@@ -335,9 +391,9 @@
             display: none;
             margin-top: 30px;
             padding: 25px;
-            background: linear-gradient(135deg, rgba(81, 207, 102, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%);
-            border-radius: 15px;
-            border: 2px solid #51cf66;
+            background: var(--color-gray-800);
+            border-radius: 8px;
+            border: 1px solid var(--color-gray-600);
         }
 
         .result-container.show {
@@ -346,20 +402,20 @@
         }
 
         .result-container h3 {
-            color: #51cf66;
+            color: var(--color-white);
             margin-bottom: 15px;
         }
 
         .download-btn {
-            background: #51cf66;
-            color: white;
+            background: var(--color-white);
+            color: var(--color-black);
             text-decoration: none;
             display: inline-block;
             margin-top: 10px;
         }
 
         .download-btn:hover {
-            background: #40b856;
+            background: var(--color-gray-100);
         }
 
         input[type="file"] {
@@ -370,6 +426,59 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .button-group button {
+            padding: 8px 12px;
+            background: var(--color-gray-700);
+            border: 1px solid var(--color-gray-600);
+            color: var(--color-gray-200);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+
+        .button-group button:hover {
+            background: var(--color-gray-600);
+            border-color: var(--color-gray-500);
+        }
+
+        .path-display {
+            padding: 12px;
+            background: var(--color-gray-900);
+            border-radius: 6px;
+            font-family: monospace;
+            color: var(--color-gray-300);
+            border: 1px solid var(--color-gray-800);
+        }
+
+        .saved-path-box {
+            margin-top: 15px;
+            padding: 15px;
+            background: var(--color-gray-900);
+            border-left: 3px solid var(--color-white);
+            border-radius: 6px;
+        }
+
+        .saved-path-box strong {
+            color: var(--color-white);
+        }
+
+        .saved-path-box .path-text {
+            margin-top: 8px;
+            padding: 10px;
+            background: var(--color-black);
+            border-radius: 4px;
+            font-family: monospace;
+            color: var(--color-gray-300);
         }
 
         @media (max-width: 768px) {
@@ -393,14 +502,14 @@
         <div class="header">
             <h1>AI 深度影片翻譯服務</h1>
             <p>支援 8 種語言：日文 • 英文 • 中文 • 德文 • 法文 • 俄文 • 義大利文 • 西班牙文</p>
-            <p style="margin-top: 8px; font-size: 0.95em;">多 API 支援：Gemini • OpenAI • Claude • 本地 LLM &nbsp;|&nbsp; TTS 引擎：F5-TTS</p>
+            <p style="margin-top: 8px; font-size: 0.95em;">多 API 支援：Gemini • OpenAI • Claude • 本地 LLM | TTS 引擎：XTTS-v2 • F5-TTS</p>
         </div>
 
         <div class="content">
             <form id="translationForm">
                 <!-- API 提供者選擇 -->
                 <div class="form-group">
-                    <label for="apiProvider">翻譯 API 提供者</label>
+                    <label for="apiProvider">🤖 翻譯 API 提供者</label>
                     <select id="apiProvider" name="api_provider" required>
                         <option value="gemini" selected>Google Gemini</option>
                         <option value="openai">OpenAI (GPT-4o-mini)</option>
@@ -411,24 +520,24 @@
 
                 <!-- API Key -->
                 <div class="form-group" id="apiKeyGroup">
-                    <label for="apiKey" id="apiKeyLabel">Gemini API Key</label>
+                    <label for="apiKey" id="apiKeyLabel">🔑 Gemini API Key</label>
                     <input type="password" id="apiKey" name="api_key" placeholder="輸入您的 API Key" required>
                 </div>
 
-                <!-- 本地 LLM 配置（僅當選擇本地 LLM 時顯示） -->
+                <!-- 本地 LLM 配置 -->
                 <div class="form-group" id="localLlmConfig" style="display: none;">
-                    <label>本地 LLM 配置</label>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                    <label>🖥️ 本地 LLM 配置</label>
+                    <div style="background: var(--color-gray-800); padding: 15px; border-radius: 6px; border: 1px solid var(--color-gray-700);">
                         <div style="margin-bottom: 10px;">
-                            <label for="localLlmUrl" style="font-size: 0.9em; color: #666;">API 端點 URL</label>
-                            <input type="text" id="localLlmUrl" name="local_llm_url" value="http://localhost:11434/api/generate" placeholder="Ollama: http://localhost:11434/api/generate" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-family: monospace;">
+                            <label for="localLlmUrl" style="font-size: 0.9em; color: var(--color-gray-300);">API 端點 URL</label>
+                            <input type="text" id="localLlmUrl" name="local_llm_url" value="http://localhost:11434/api/generate" placeholder="Ollama: http://localhost:11434/api/generate" style="width: 100%; padding: 10px; font-family: monospace;">
                         </div>
                         <div>
-                            <label for="localLlmModel" style="font-size: 0.9em; color: #666;">模型名稱</label>
-                            <input type="text" id="localLlmModel" name="local_llm_model" value="llama3.2" placeholder="例如: llama3.2, qwen2.5, mistral" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                            <label for="localLlmModel" style="font-size: 0.9em; color: var(--color-gray-300);">模型名稱</label>
+                            <input type="text" id="localLlmModel" name="local_llm_model" value="llama3.2" placeholder="例如: llama3.2, qwen2.5, mistral">
                         </div>
-                        <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 5px; font-size: 0.85em; color: #856404;">
-                            <strong>提示：</strong>
+                        <div class="info-box" style="margin-top: 10px;">
+                            <strong>💡 提示：</strong>
                             <ul style="margin: 5px 0 0 15px; line-height: 1.6;">
                                 <li>Ollama 默認端口: 11434</li>
                                 <li>LM Studio 默認端口: 1234</li>
@@ -438,16 +547,28 @@
                     </div>
                 </div>
 
-                <!-- TTS 語音克隆引擎：固定使用 F5-TTS -->
-                <input type="hidden" id="ttsEngine" name="tts_engine" value="f5tts">
+                <!-- Email 輸入 -->
+                <div class="form-group">
+                    <label for="userEmail">📧 Email 地址</label>
+                    <input type="email" id="userEmail" name="email" placeholder="your@email.com" required>
+                    <div class="info-box" style="margin-top: 10px;">
+                        <strong>⚠️ 重要說明：</strong>
+                        <ul style="margin: 5px 0 0 15px; line-height: 1.8;">
+                            <li>影片處理完成後，將發送到此 Email</li>
+                            <li>每個 Email 地址 <strong>5 天</strong>內僅可使用一次</li>
+                            <li>僅支援 <strong>1 分鐘</strong>以內的影片</li>
+                            <li>處理期間可以關閉網頁，我們會通知您</li>
+                        </ul>
+                    </div>
+                </div>
 
                 <!-- 影片上傳區域 -->
                 <div class="form-group">
                     <label>上傳影片</label>
                     <div class="upload-area" id="uploadArea">
-                        <div class="upload-icon">⬆</div>
+                        <div class="upload-icon">📤</div>
                         <div class="upload-text">拖放影片到這裡或點擊上傳</div>
-                        <div class="upload-subtext">支持 MP4 格式</div>
+                        <div class="upload-subtext">支持 MP4 格式（最長 1 分鐘）</div>
                     </div>
                     <input type="file" id="videoFile" accept="video/mp4" required>
                     <div class="file-info" id="fileInfo">
@@ -458,26 +579,14 @@
                 <!-- 輸出目錄選擇 -->
                 <div class="form-group">
                     <label>輸出目錄（輸入完整路徑）</label>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" id="outputDirectory" name="output_directory" value="audio_files" placeholder="例如: /Users/你的用戶名/Desktop/output" style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-family: monospace;">
+                    <input type="text" id="outputDirectory" name="output_directory" value="audio_files" placeholder="例如: /Users/你的用戶名/Desktop/output" style="font-family: monospace;">
+                    <div class="button-group">
+                        <button type="button" onclick="setOutputDir('${HOME}/Desktop')">🖥️ 桌面</button>
+                        <button type="button" onclick="setOutputDir('${HOME}/Documents')">📄 文件</button>
+                        <button type="button" onclick="setOutputDir('${HOME}/Downloads')">📥 下載</button>
+                        <button type="button" onclick="setOutputDir('audio_files')">🎵 audio_files</button>
                     </div>
-                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-                        <button type="button" onclick="setOutputDir('${HOME}/Desktop')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            桌面
-                        </button>
-                        <button type="button" onclick="setOutputDir('${HOME}/Documents')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            文件
-                        </button>
-                        <button type="button" onclick="setOutputDir('${HOME}/Downloads')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            下載
-                        </button>
-                        <button type="button" onclick="setOutputDir('audio_files')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            audio_files
-                        </button>
-                    </div>
-                    <small style="color: #666; margin-top: 8px; display: block;">
-                        提示：輸入完整路徑或點擊快捷按鈕。例如：/Users/raychang/Desktop/我的影片
-                    </small>
+                    <small>💡 輸入完整路徑或點擊快捷按鈕。例如：/Users/raychang/Desktop/我的影片</small>
                 </div>
 
                 <!-- 輸出文件名設置 -->
@@ -485,7 +594,7 @@
                     <label for="outputFileName">輸出文件名</label>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <input type="text" id="outputFileName" name="output_filename" placeholder="留空則自動命名為: 原文件名_translated.mp4" style="flex: 1;">
-                        <button type="button" class="btn" onclick="generateFileName()" style="width: auto; padding: 12px 20px; background: linear-gradient(135deg, #51cf66 0%, #40b856 100%);">
+                        <button type="button" class="btn" onclick="generateFileName()" style="width: auto; padding: 12px 20px; background: var(--color-gray-700); color: var(--color-white);">
                             自動生成
                         </button>
                     </div>
@@ -494,18 +603,16 @@
                 <!-- 完整輸出路徑顯示 -->
                 <div class="form-group">
                     <label>完整輸出路徑</label>
-                    <div style="padding: 12px; background: #f0f0f0; border-radius: 8px; font-family: monospace; color: #333;">
+                    <div class="path-display">
                         <span id="fullOutputPath">audio_files/原文件名_translated.mp4</span>
                     </div>
-                    <small style="color: #666; margin-top: 5px; display: block;">
-                        處理完成後，文件將保存在此路徑
-                    </small>
+                    <small>處理完成後，文件將保存在此路徑</small>
                 </div>
 
                 <!-- 語音翻譯語言 -->
                 <div class="two-column">
                     <div class="form-group">
-                        <label for="voiceLanguage">語音翻譯語言</label>
+                        <label for="voiceLanguage">🎤 語音翻譯語言</label>
                         <select id="voiceLanguage" name="voice_language" required>
                             <option value="日文" selected>日文 (Japanese)</option>
                             <option value="英文">英文 (English)</option>
@@ -519,7 +626,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="slideLanguage">投影片翻譯語言</label>
+                        <label for="slideLanguage">📊 投影片翻譯語言</label>
                         <select id="slideLanguage" name="slide_language">
                             <option value="Japanese" selected>Japanese (日文)</option>
                             <option value="English">English (英文)</option>
@@ -541,24 +648,20 @@
 
                 <!-- 進階設定 -->
                 <div class="advanced-settings" id="advancedSettings">
-                    <h3 style="margin-bottom: 15px;">進階設定</h3>
-                    <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9em; color: #856404;">
-                        <strong>提示：</strong>啟用「投影片翻譯」時才會進行分段處理。如果影片只有人臉部分，建議關閉投影片翻譯以加快處理速度。
+                    <h3>⚙️ 進階設定</h3>
+                    <div class="info-box">
+                        <strong>💡 提示：</strong>啟用「投影片翻譯」時才會進行分段處理。如果影片只有人臉部分，建議關閉投影片翻譯以加快處理速度。
                     </div>
                     <div class="settings-grid">
                         <div class="form-group">
                             <label for="minSegmentDuration">最小段落長度 (秒)</label>
                             <input type="number" id="minSegmentDuration" name="min_segment_duration" value="3" min="1" max="10" step="0.5">
-                            <small style="color: #666; display: block; margin-top: 5px;">
-                                建議值：3-5秒。較大的值可減少段落數量，提升效率。
-                            </small>
+                            <small>建議值：3-5秒。較大的值可減少段落數量，提升效率。</small>
                         </div>
                         <div class="form-group">
                             <label for="hashThreshold">場景切換門檻</label>
                             <input type="number" id="hashThreshold" name="hash_threshold" value="8" min="1" max="20">
-                            <small style="color: #666; display: block; margin-top: 5px;">
-                                建議值：8-12。較大的值可減少過度分段，避免相似場景被分開。
-                            </small>
+                            <small>建議值：8-12。較大的值可減少過度分段，避免相似場景被分開。</small>
                         </div>
                     </div>
                 </div>
@@ -590,19 +693,19 @@
 
             <!-- 結果顯示區域 -->
             <div class="result-container" id="resultContainer">
-                <h3>處理完成！</h3>
-                <p>您的影片已成功處理完成。</p>
+                <h3>✅ 處理完成！</h3>
+                <p style="color: var(--color-gray-300);">您的影片已成功處理完成。</p>
                 
-                <div style="margin-top: 15px; padding: 15px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 5px;">
-                    <strong style="color: #2e7d32;">文件保存位置：</strong>
-                    <div style="margin-top: 8px; padding: 10px; background: white; border-radius: 5px; font-family: monospace; color: #333;">
+                <div class="saved-path-box">
+                    <strong>📁 文件保存位置：</strong>
+                    <div class="path-text">
                         <span id="savedFilePath"></span>
                     </div>
                 </div>
                 
-                <div style="margin-top: 15px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 5px;">
-                    <strong>下載說明：</strong>
-                    <ol style="margin: 10px 0 0 20px; color: #856404; line-height: 1.8;">
+                <div class="info-box" style="margin-top: 15px;">
+                    <strong>💡 下載說明：</strong>
+                    <ol style="margin: 10px 0 0 20px; line-height: 1.8;">
                         <li>點擊下方的「下載到電腦」按鈕</li>
                         <li><strong>瀏覽器會自動彈出文件保存對話框</strong></li>
                         <li>在對話框中選擇您想要的保存位置（任意資料夾）</li>
@@ -655,12 +758,11 @@
         apiProviderSelect.addEventListener('change', function() {
             const provider = this.value;
             
-            // 更新 API Key 標籤和提示
             const labels = {
-                'gemini': 'Gemini API Key',
-                'openai': 'OpenAI API Key',
-                'claude': 'Claude API Key',
-                'local_llm': 'API Key (本地 LLM 不需要)'
+                'gemini': '🔑 Gemini API Key',
+                'openai': '🔑 OpenAI API Key',
+                'claude': '🔑 Claude API Key',
+                'local_llm': '🔑 API Key (本地 LLM 不需要)'
             };
             
             const placeholders = {
@@ -673,11 +775,10 @@
             apiKeyLabel.textContent = labels[provider];
             apiKeyInput.placeholder = placeholders[provider];
             
-            // 本地 LLM 配置顯示/隱藏
             if (provider === 'local_llm') {
                 localLlmConfig.style.display = 'block';
-                apiKeyInput.required = false;  // 本地 LLM 不需要 API Key
-                apiKeyInput.value = 'local';   // 設置一個默認值
+                apiKeyInput.required = false;
+                apiKeyInput.value = 'local';
             } else {
                 localLlmConfig.style.display = 'none';
                 apiKeyInput.required = true;
@@ -715,7 +816,7 @@
         videoFile.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 displayFileName(e.target.files[0].name);
-                updateFullOutputPath(); // 更新輸出路徑顯示
+                updateFullOutputPath();
             }
         });
 
@@ -745,14 +846,12 @@
 
         // 設置輸出目錄
         function setOutputDir(path) {
-            // 替換 ${HOME} 為實際的用戶主目錄
             const actualPath = path.replace('${HOME}', userHomeDir);
             outputDirectoryInput.value = actualPath;
             selectedDirectory = actualPath;
             updateFullOutputPath();
         }
 
-        // 輸入框變化時更新
         outputDirectoryInput.addEventListener('input', function() {
             selectedDirectory = this.value.trim() || 'audio_files';
             updateFullOutputPath();
@@ -776,7 +875,6 @@
                 }
             }
             
-            // 確保文件名有 .mp4 擴展名
             if (filename !== '原文件名_translated.mp4' && !filename.toLowerCase().endsWith('.mp4')) {
                 filename += '.mp4';
             }
@@ -791,7 +889,7 @@
             
             if (videoInput.files.length > 0) {
                 const originalName = videoInput.files[0].name;
-                const baseName = originalName.replace(/\.[^/.]+$/, ''); // 移除擴展名
+                const baseName = originalName.replace(/\.[^/.]+$/, '');
                 const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
                 const newName = `${baseName}_translated_${timestamp}.mp4`;
                 outputInput.value = newName;
@@ -833,12 +931,10 @@
         translationForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            // 顯示進度容器
             progressContainer.classList.add('show');
             resultContainer.classList.remove('show');
             logContainer.innerHTML = '';
             
-            // 禁用提交按鈕
             submitBtn.disabled = true;
             submitBtn.textContent = '⏳ 處理中...';
             
@@ -846,38 +942,31 @@
             updateProgress(0, '正在上傳影片...');
             addLog('開始處理影片...', 'info');
 
-            // 準備表單數據
             const formData = new FormData();
             formData.append('video', videoFile.files[0]);
+            formData.append('email', document.getElementById('userEmail').value);
             formData.append('api_key', document.getElementById('apiKey').value);
             formData.append('voice_language', document.getElementById('voiceLanguage').value);
             formData.append('slide_language', document.getElementById('slideLanguage').value);
             formData.append('enable_slide_translation', document.getElementById('enableSlideTranslation').checked);
             formData.append('min_segment_duration', document.getElementById('minSegmentDuration').value);
             formData.append('hash_threshold', document.getElementById('hashThreshold').value);
-            
-            // 添加 API 提供者和 TTS 引擎
             formData.append('api_provider', document.getElementById('apiProvider').value);
-            formData.append('tts_engine', document.getElementById('ttsEngine').value);
             
-            // 添加本地 LLM 配置（如果選擇了本地 LLM）
             if (document.getElementById('apiProvider').value === 'local_llm') {
                 formData.append('local_llm_url', document.getElementById('localLlmUrl').value);
                 formData.append('local_llm_model', document.getElementById('localLlmModel').value);
             }
             
-            // 添加輸出目錄
             const outputDirectory = document.getElementById('outputDirectory').value.trim() || 'audio_files';
             formData.append('output_directory', outputDirectory);
             
-            // 添加輸出文件名（如果有）
             const outputFileName = document.getElementById('outputFileName').value.trim();
             if (outputFileName) {
                 formData.append('output_filename', outputFileName);
             }
 
             try {
-                // 發送請求
                 const response = await fetch('/process', {
                     method: 'POST',
                     body: formData
@@ -888,14 +977,27 @@
                     throw new Error(errorData.error || '處理失敗');
                 }
 
-                // 獲取任務 ID
                 const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || '提交失敗');
+                }
+                
                 const taskId = data.task_id;
                 
-                addLog(`任務已建立，ID: ${taskId}`, 'success');
+                addLog(`✅ 任務已加入處理隊列`, 'success');
+                addLog(`📧 Email: ${data.email}`, 'info');
+                addLog(`🎬 影片時長: ${data.video_duration}`, 'info');
+                addLog(`📊 隊列位置: 第 ${data.queue_position} 位`, 'info');
+                addLog(`📝 任務 ID: ${taskId}`, 'info');
+                addLog(`ℹ️  您可以關閉網頁，處理完成後會寄送 Email 通知`, 'info');
                 
-                // 開始輪詢進度
-                pollProgress(taskId);
+                // 更新按鈕狀態
+                submitBtn.textContent = '✅ 已加入隊列';
+                setTimeout(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '開始處理影片';
+                }, 3000);
 
             } catch (error) {
                 addLog(`錯誤: ${error.message}`, 'error');
@@ -905,7 +1007,7 @@
             }
         });
 
-        // 輪詢進度
+        // 輪詢進度（停用，因為使用排隊系統）
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
         let currentTaskId = null;
@@ -918,10 +1020,9 @@
             reconnectAttempts = 0;
             connectToProgress(taskId);
             
-            // 啟動進度檢查定時器（每60秒檢查一次）
             progressCheckInterval = setInterval(() => {
                 const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
-                if (timeSinceLastUpdate > 60000) { // 60秒沒有更新才認為可能斷線
+                if (timeSinceLastUpdate > 60000) {
                     console.log('長時間無更新，檢查連接狀態...');
                     if (eventSource && eventSource.readyState === EventSource.CLOSED) {
                         addLog('連接已中斷，正在重新連接...', 'warning');
@@ -948,7 +1049,6 @@
             eventSource.onmessage = function(event) {
                 lastProgressUpdate = Date.now();
                 
-                // 第一次收到消息時才顯示連接成功
                 if (!firstMessageReceived) {
                     firstMessageReceived = true;
                     console.log('開始接收進度更新');
@@ -957,51 +1057,43 @@
                 try {
                     const data = JSON.parse(event.data);
                     
-                    // 忽略心跳消息（不顯示）
                     if (data.heartbeat) {
                         console.log('心跳:', data);
                         return;
                     }
                     
-                    // 更新進度
                     if (data.progress !== undefined) {
                         updateProgress(data.progress, data.status || '處理中...');
                     }
                     
-                    // 添加日誌
                     if (data.log) {
-                        const logType = data.log.includes('錯誤') || data.log.includes('失敗') ? 'error' :
-                                       data.log.includes('成功') || data.log.includes('完成') ? 'success' :
-                                       data.log.includes('警告') ? 'warning' : 'info';
+                        const logType = data.log.includes('錯誤') || data.log.includes('失敗') || data.log.includes('❌') ? 'error' :
+                                       data.log.includes('成功') || data.log.includes('完成') || data.log.includes('✅') ? 'success' :
+                                       data.log.includes('警告') || data.log.includes('⚠️') ? 'warning' : 'info';
                         addLog(data.log, logType);
                     }
                     
-                    // 處理完成
                     if (data.status === 'completed') {
                         cleanupProgress();
                         updateProgress(100, '處理完成！');
                         updateStatus('ready');
-                        addLog('影片處理完成！', 'success');
+                        addLog('✅ 影片處理完成！', 'success');
                         
-                        // 顯示下載按鈕並保存下載 URL
                         resultContainer.classList.add('show');
                         downloadBtn.setAttribute('data-download-url', data.output_url);
                         
-                        // 顯示保存的文件路徑
                         const savedFilePath = document.getElementById('savedFilePath');
                         const fullPath = fullOutputPathSpan.textContent;
                         savedFilePath.textContent = fullPath;
                         
-                        // 恢復提交按鈕
                         submitBtn.disabled = false;
                         submitBtn.textContent = '開始處理影片';
                     }
                     
-                    // 處理失敗
                     if (data.status === 'failed') {
                         cleanupProgress();
                         updateStatus('error');
-                        addLog(`處理失敗: ${data.error}`, 'error');
+                        addLog(`❌ 處理失敗: ${data.error}`, 'error');
                         
                         submitBtn.disabled = false;
                         submitBtn.textContent = '開始處理影片';
@@ -1014,9 +1106,7 @@
             eventSource.onerror = function(error) {
                 console.error('EventSource error:', error, 'readyState:', eventSource.readyState);
                 
-                // 只有在真正斷開後才重連
                 if (eventSource.readyState === EventSource.CLOSED) {
-                    // 如果還沒收到第一條消息就斷開，可能是後端還沒準備好
                     if (!firstMessageReceived && reconnectAttempts < 3) {
                         console.log('等待後端準備...');
                         reconnectToProgress();
@@ -1025,7 +1115,6 @@
                         reconnectToProgress();
                     }
                 }
-                // CONNECTING 狀態不需要處理，等待自動連接
             };
         }
 
@@ -1041,7 +1130,6 @@
 
             reconnectAttempts++;
             
-            // 只在第一次重連時顯示消息，避免太吵
             if (reconnectAttempts === 1) {
                 console.log('嘗試重新連接...');
             } else {
@@ -1052,7 +1140,7 @@
                 if (currentTaskId) {
                     connectToProgress(currentTaskId);
                 }
-            }, 1000); // 固定 1 秒延遲，不要遞增
+            }, 1000);
         }
 
         function cleanupProgress() {
@@ -1067,21 +1155,18 @@
             currentTaskId = null;
         }
 
-        // 頁面卸載時清理
         window.addEventListener('beforeunload', cleanupProgress);
 
         // 下載文件函數
         async function downloadFile() {
             const downloadUrl = downloadBtn.getAttribute('data-download-url');
             if (!downloadUrl) {
-                alert('下載鏈接不可用，請重新處理影片');
+                alert('❌ 下載鏈接不可用，請重新處理影片');
                 return;
             }
 
-            // 獲取輸出文件名
             let fileName = document.getElementById('outputFileName').value.trim();
             if (!fileName) {
-                // 如果沒有指定文件名，使用默認名稱
                 const originalFile = document.getElementById('videoFile').files[0];
                 if (originalFile) {
                     const baseName = originalFile.name.replace(/\.[^/.]+$/, '');
@@ -1091,16 +1176,14 @@
                 }
             }
 
-            // 確保文件名有 .mp4 擴展名
             if (!fileName.toLowerCase().endsWith('.mp4')) {
                 fileName += '.mp4';
             }
 
-            addLog(`準備下載: ${fileName}`, 'info');
-            addLog('瀏覽器即將彈出「另存為」對話框，請選擇保存位置', 'info');
+            addLog(`📥 準備下載: ${fileName}`, 'info');
+            addLog('💡 瀏覽器即將彈出「另存為」對話框，請選擇保存位置', 'info');
 
             try {
-                // 方法1: 嘗試使用 fetch + blob 下載（確保觸發另存為對話框）
                 const response = await fetch(downloadUrl);
                 if (!response.ok) {
                     throw new Error('下載失敗');
@@ -1109,30 +1192,26 @@
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 
-                // 創建下載鏈接
                 const link = document.createElement('a');
                 link.href = url;
                 link.download = fileName;
                 link.style.display = 'none';
                 
-                // 添加到 DOM 並觸發點擊
                 document.body.appendChild(link);
                 link.click();
                 
-                // 清理
                 setTimeout(() => {
                     document.body.removeChild(link);
                     window.URL.revokeObjectURL(url);
                 }, 100);
                 
-                addLog('下載已開始！請在彈出的對話框中選擇保存位置', 'success');
-                addLog('您可以將文件保存到任意資料夾', 'info');
+                addLog('✅ 下載已開始！請在彈出的對話框中選擇保存位置', 'success');
+                addLog('📂 您可以將文件保存到任意資料夾', 'info');
                 
             } catch (error) {
                 console.error('下載錯誤:', error);
                 
-                // 方法2: 備用方案 - 直接使用 <a> 標籤
-                addLog('使用備用下載方法...', 'warning');
+                addLog('⚠️ 使用備用下載方法...', 'warning');
                 const link = document.createElement('a');
                 link.href = downloadUrl;
                 link.download = fileName;
@@ -1146,10 +1225,9 @@
                     document.body.removeChild(link);
                 }, 100);
                 
-                addLog('下載已開始（備用方法）', 'success');
+                addLog('✅ 下載已開始（備用方法）', 'success');
             }
         }
     </script>
 </body>
 </html>
-

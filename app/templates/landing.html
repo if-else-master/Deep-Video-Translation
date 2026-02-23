@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Video Translation - AI 影片智能翻譯系統</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --color-black: #000000;
+            --color-dark: #1a1a1a;
+            --color-gray-900: #2d2d2d;
+            --color-gray-800: #404040;
+            --color-gray-700: #525252;
+            --color-gray-600: #6b6b6b;
+            --color-gray-500: #8a8a8a;
+            --color-gray-400: #a3a3a3;
+            --color-gray-300: #c4c4c4;
+            --color-gray-200: #e0e0e0;
+            --color-gray-100: #f5f5f5;
+            --color-white: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--color-black);
+            color: var(--color-gray-200);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* 導航欄 */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--color-gray-800);
+        }
+
+        .navbar-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--color-white);
+            letter-spacing: -0.5px;
+        }
+
+        .nav-button {
+            background: var(--color-white);
+            color: var(--color-black);
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .nav-button:hover {
+            background: var(--color-gray-200);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Hero 區域 */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 120px 40px 80px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .hero-content {
+            max-width: 1200px;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero h1 {
+            font-size: 4.5em;
+            font-weight: 700;
+            color: var(--color-white);
+            margin-bottom: 30px;
+            letter-spacing: -2px;
+            line-height: 1.1;
+        }
+
+        .hero-subtitle {
+            font-size: 1.5em;
+            color: var(--color-gray-400);
+            margin-bottom: 50px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-button {
+            background: var(--color-white);
+            color: var(--color-black);
+            padding: 18px 50px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+        }
+
+        .cta-button:hover {
+            background: var(--color-gray-200);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(255, 255, 255, 0.15);
+        }
+
+        .cta-button.secondary {
+            background: transparent;
+            color: var(--color-white);
+            border: 2px solid var(--color-gray-700);
+        }
+
+        .cta-button.secondary:hover {
+            background: var(--color-gray-900);
+            border-color: var(--color-gray-500);
+        }
+
+        /* 功能展示區 - 保留給前端開發者 */
+        .features-section {
+            padding: 120px 40px;
+            background: var(--color-dark);
+            border-top: 1px solid var(--color-gray-900);
+        }
+
+        .section-header {
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto 80px;
+        }
+
+        .section-header h2 {
+            font-size: 3em;
+            font-weight: 700;
+            color: var(--color-white);
+            margin-bottom: 20px;
+            letter-spacing: -1px;
+        }
+
+        .section-header p {
+            font-size: 1.2em;
+            color: var(--color-gray-500);
+        }
+
+        .features-grid {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+        }
+
+        .feature-card {
+            background: var(--color-gray-900);
+            border: 1px solid var(--color-gray-800);
+            border-radius: 12px;
+            padding: 40px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--color-gray-600);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--color-gray-800);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            border: 1px solid var(--color-gray-700);
+        }
+
+        .feature-card h3 {
+            font-size: 1.5em;
+            color: var(--color-white);
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .feature-card p {
+            color: var(--color-gray-400);
+            line-height: 1.7;
+            font-size: 1em;
+        }
+
+        /* 技術規格區 - 保留給前端開發者 */
+        .tech-section {
+            padding: 120px 40px;
+            background: var(--color-black);
+        }
+
+        .tech-grid {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+        }
+
+        .tech-item {
+            background: var(--color-dark);
+            border: 1px solid var(--color-gray-900);
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .tech-item:hover {
+            border-color: var(--color-gray-700);
+            transform: translateY(-3px);
+        }
+
+        .tech-label {
+            font-size: 0.85em;
+            color: var(--color-gray-500);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .tech-value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--color-white);
+        }
+
+        /* 使用說明區 - 保留給前端開發者 */
+        .steps-section {
+            padding: 120px 40px;
+            background: var(--color-dark);
+            border-top: 1px solid var(--color-gray-900);
+        }
+
+        .steps-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .step {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 60px;
+            align-items: center;
+        }
+
+        .step-number {
+            font-size: 4em;
+            font-weight: 700;
+            color: var(--color-gray-800);
+            line-height: 1;
+            min-width: 100px;
+        }
+
+        .step-content h3 {
+            font-size: 1.8em;
+            color: var(--color-white);
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .step-content p {
+            font-size: 1.1em;
+            color: var(--color-gray-400);
+            line-height: 1.7;
+        }
+
+        /* CTA 區域 */
+        .cta-section {
+            padding: 100px 40px;
+            background: var(--color-black);
+            text-align: center;
+            border-top: 1px solid var(--color-gray-900);
+        }
+
+        .cta-section h2 {
+            font-size: 3em;
+            color: var(--color-white);
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        .cta-section p {
+            font-size: 1.3em;
+            color: var(--color-gray-500);
+            margin-bottom: 50px;
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--color-dark);
+            border-top: 1px solid var(--color-gray-900);
+            padding: 60px 40px 40px;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer p {
+            color: var(--color-gray-600);
+            font-size: 0.95em;
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5em;
+            }
+
+            .hero-subtitle {
+                font-size: 1.2em;
+            }
+
+            .section-header h2 {
+                font-size: 2em;
+            }
+
+            .step {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .step-number {
+                font-size: 3em;
+            }
+
+            .navbar-container {
+                padding: 15px 20px;
+            }
+        }
+
+        /* 佔位符區域 - 供前端開發者添加內容 */
+        .placeholder-section {
+            padding: 80px 40px;
+            background: var(--color-gray-900);
+            border: 2px dashed var(--color-gray-700);
+            margin: 40px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .placeholder-section h3 {
+            color: var(--color-gray-500);
+            font-size: 1.5em;
+            font-weight: 400;
+        }
+    </style>
+</head>
+<body>
+    <!-- 導航欄 -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="logo">Deep Video Translation</div>
+            <a href="/app" class="nav-button">進入系統</a>
+        </div>
+    </nav>
+
+    <!-- Hero 區域 -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>AI 影片智能翻譯系統</h1>
+            <p class="hero-subtitle">
+                結合語音辨識、機器翻譯與唇形同步技術，<br>
+                打造頂尖的影片本地化解決方案
+            </p>
+            <div>
+                <a href="/app" class="cta-button">開始使用</a>
+                <a href="#features" class="cta-button secondary">了解更多</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- 功能展示區 - 保留給前端開發者自定義 -->
+    <section id="features" class="features-section">
+        <div class="section-header">
+            <h2>核心功能</h2>
+            <p>強大的 AI 技術，簡單的操作流程</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🎯</div>
+                <h3>智能語音辨識</h3>
+                <p>高精度語音轉文字技術，支援多語言辨識，準確捕捉影片中的每一句話。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌐</div>
+                <h3>多語言翻譯</h3>
+                <p>支援多種語言互譯，採用先進的神經機器翻譯技術，確保翻譯品質。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎤</div>
+                <h3>語音合成</h3>
+                <p>自然流暢的 AI 語音生成，支援多種音色選擇，讓翻譯更有溫度。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">👄</div>
+                <h3>唇形同步</h3>
+                <p>智能唇形同步技術，讓翻譯後的影片更加自然逼真。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>投影片辨識</h3>
+                <p>自動識別並翻譯影片中的投影片內容，完整保留簡報資訊。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3>高效處理</h3>
+                <p>優化的處理流程，快速完成影片翻譯任務，節省寶貴時間。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 技術規格區 - 保留給前端開發者自定義 -->
+    <section class="tech-section">
+        <div class="section-header">
+            <h2>技術規格</h2>
+            <p>強大的技術支撐，可靠的系統性能</p>
+        </div>
+        <div class="tech-grid">
+            <div class="tech-item">
+                <div class="tech-label">處理速度</div>
+                <div class="tech-value">5x</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">支援語言</div>
+                <div class="tech-value">20+</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">辨識準確率</div>
+                <div class="tech-value">95%</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">同步精度</div>
+                <div class="tech-value">99%</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 使用步驟區 - 保留給前端開發者自定義 -->
+    <section class="steps-section">
+        <div class="section-header">
+            <h2>使用流程</h2>
+            <p>簡單三步驟，完成影片翻譯</p>
+        </div>
+        <div class="steps-container">
+            <div class="step">
+                <div class="step-number">01</div>
+                <div class="step-content">
+                    <h3>上傳影片</h3>
+                    <p>選擇需要翻譯的影片檔案，系統支援多種常見影片格式。</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">02</div>
+                <div class="step-content">
+                    <h3>設定參數</h3>
+                    <p>選擇翻譯語言、語音模型等參數，客製化您的翻譯需求。</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">03</div>
+                <div class="step-content">
+                    <h3>下載結果</h3>
+                    <p>處理完成後，即可下載翻譯好的影片及相關檔案。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 前端開發者自定義區塊 -->
+    <div class="placeholder-section">
+        <h3>📝 此區域保留給前端開發者添加更多內容</h3>
+    </div>
+
+    <!-- CTA 區域 -->
+    <section class="cta-section">
+        <h2>準備開始了嗎？</h2>
+        <p>立即體驗 AI 影片翻譯的強大功能</p>
+        <a href="/app" class="cta-button">立即開始</a>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 Deep Video Translation. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // 平滑滾動
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

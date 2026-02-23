@@ -16,7 +16,6 @@ import json
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Wav2Lip'))
 
 from txtvoice import voice
-from xttsv import xttsv
 from f5ttsv import f5ttsv
 from Wav2Lip.inference import run_inference
 
@@ -34,15 +33,26 @@ import subprocess
 from flask import Flask, request, jsonify, render_template, Response, send_file
 from werkzeug.utils import secure_filename
 
+# 排隊系統相關
+from queue_manager import QueueManager
+from email_service import EmailService
+from task_processor import TaskProcessor
+from video_utils import get_video_duration, format_duration
+
 # 創建 Flask 應用
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['UPLOAD_FOLDER'] = 'temp/uploads'
+app.config['OUTPUT_STORAGE'] = 'output_videos'  # 本地儲存完成的影片
 
 # 任務狀態管理
 tasks = {}
 task_logs = {}
 task_progress = {}
+
+# 初始化排隊系統
+queue_manager = QueueManager()
+email_service = EmailService()
 
 
 class VideoProcessingTask:
@@ -1031,6 +1041,18 @@ class DeepVideoTranslationApp:
         # 第四步：提取並儲存段落
         self.extract_segments(video_path, merged_segments, face_dir, ppt_dir)
         
+        # 第五步：保存段落信息到 JSON 文件，供後續合併使用
+        segments_info_path = "temp/segments_info.json"
+        self.ensure_directory_exists(os.path.dirname(segments_info_path))
+        
+        try:
+            import json
+            with open(segments_info_path, 'w', encoding='utf-8') as f:
+                json.dump(merged_segments, f, ensure_ascii=False, indent=2)
+            self.log(f"💾 段落信息已保存: {segments_info_path}")
+        except Exception as e:
+            self.log(f"⚠️ 保存段落信息失敗: {e}", 'warning')
+        
         return merged_segments
 
     def merge_similar_segments(self, segments, fps, min_duration):
@@ -1146,7 +1168,7 @@ class DeepVideoTranslationApp:
         
         # 創建靜音音頻並合成
         try:
-            from xttsv import create_silent_audio
+            from f5ttsv import create_silent_audio
             temp_audio_path = output_path.replace('.mp4', '_temp_audio.wav')
             create_silent_audio(duration, temp_audio_path)
             
@@ -1276,15 +1298,9 @@ class DeepVideoTranslationApp:
                 temp_audio = os.path.join(face_dir, f"{base_name}_audio.wav")
                 
                 try:
-                    # 根據 TTS 引擎選擇進行語音克隆
-                    tts_engine = getattr(self, 'tts_engine', 'xtts')
-                    
-                    if tts_engine == 'f5tts':
-                        print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
-                        audio_path = f5ttsv(translated_text, input_path, temp_audio, language)
-                    else:
-                        print(f"  🎤 使用 XTTS-v2 引擎進行語音克隆...")
-                        audio_path = xttsv(translated_text, input_path, temp_audio, language)
+                    # 使用 F5-TTS 引擎進行語音克隆
+                    print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
+                    audio_path = f5ttsv(translated_text, input_path, temp_audio, language)
                 except Exception as tts_error:
                     print(f"  ⚠️ 語音克隆失敗: {tts_error}")
                     # 如果語音克隆失敗，直接複製原始影片
@@ -1430,15 +1446,9 @@ class DeepVideoTranslationApp:
                     temp_audio = os.path.join(ppt_dir, f"{base_name}_audio.wav")
                     
                     try:
-                        # 根據 TTS 引擎選擇進行語音克隆
-                        tts_engine = getattr(self, 'tts_engine', 'xtts')
-                        
-                        if tts_engine == 'f5tts':
-                            print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
-                            f5ttsv(translated_text, input_path, temp_audio, language)
-                        else:
-                            print(f"  🎤 使用 XTTS-v2 引擎進行語音克隆...")
-                            xttsv(translated_text, input_path, temp_audio, language)
+                        # 使用 F5-TTS 引擎進行語音克隆
+                        print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
+                        f5ttsv(translated_text, input_path, temp_audio, language)
                     except Exception as tts_error:
                         print(f"  ⚠️ 語音克隆失敗: {tts_error}")
                         temp_audio = None
@@ -1640,6 +1650,109 @@ class DeepVideoTranslationApp:
             print(f"      🔄 返回原始幀作為備用")
             return frame
 
+    def merge_two_videos(self, video1_path, video2_path, output_path):
+        """
+        合併兩個視頻文件（按時間軸順序）- 來自 manual_merge.py 的成功實現
+        自動統一格式後合併，確保沒有黑屏問題
+        """
+        if not os.path.exists(video1_path):
+            print(f"❌ 視頻1不存在: {video1_path}")
+            return False
+        
+        if not os.path.exists(video2_path):
+            print(f"❌ 視頻2不存在: {video2_path}")
+            return False
+        
+        print(f"🎬 開始合併兩個視頻:")
+        print(f"  📂 視頻1: {os.path.basename(video1_path)}")
+        print(f"  📂 視頻2: {os.path.basename(video2_path)}")
+        print(f"  📂 輸出: {os.path.basename(output_path)}")
+        
+        # 檢查視頻信息
+        print("  🔍 檢查視頻格式...")
+        for path, label in [(video1_path, "視頻1"), (video2_path, "視頻2")]:
+            cmd = f'ffprobe -v error -select_streams v:0 -show_entries stream=width,height,codec_name,duration -of csv=p=0 "{path}"'
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                info = result.stdout.strip().split(',')
+                if len(info) >= 3:
+                    duration = info[3] if len(info) > 3 else "N/A"
+                    print(f"    {label}: {info[2]}編碼, {info[0]}x{info[1]}, {duration}秒")
+        
+        # 方法1: 先統一格式再用 concat demuxer (最可靠)
+        print("  📝 使用方法: 先統一格式再用 concat demuxer")
+        temp_video1 = "temp/video1_normalized.mp4"
+        temp_video2 = "temp/video2_normalized.mp4"
+        
+        try:
+            # 統一第一個視頻格式
+            print("    🔧 統一視頻1格式 (1280x720, h264, 30fps, 44100Hz)...")
+            cmd_video1 = f'ffmpeg -y -i "{video1_path}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -ar 44100 "{temp_video1}"'
+            result1 = subprocess.run(cmd_video1, shell=True, capture_output=True, text=True)
+            
+            if result1.returncode != 0:
+                print(f"       ⚠️ 視頻1格式統一失敗")
+                raise Exception("視頻1格式統一失敗")
+            print("       ✅ 完成")
+            
+            # 統一第二個視頻格式
+            print("    🔧 統一視頻2格式 (1280x720, h264, 30fps, 44100Hz)...")
+            cmd_video2 = f'ffmpeg -y -i "{video2_path}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -ar 44100 "{temp_video2}"'
+            result2 = subprocess.run(cmd_video2, shell=True, capture_output=True, text=True)
+            
+            if result2.returncode != 0:
+                print(f"       ⚠️ 視頻2格式統一失敗")
+                raise Exception("視頻2格式統一失敗")
+            print("       ✅ 完成")
+            
+            # 創建合併列表
+            list_file = "temp/two_videos_merge_list.txt"
+            with open(list_file, 'w', encoding='utf-8') as f:
+                f.write(f"file '{os.path.abspath(temp_video1)}'\n")
+                f.write(f"file '{os.path.abspath(temp_video2)}'\n")
+            
+            # 合併 (使用 copy 因為格式已經統一)
+            print("    🔧 合併統一格式的視頻...")
+            cmd_merge = f'ffmpeg -y -f concat -safe 0 -i "{list_file}" -c copy "{output_path}"'
+            result_merge = subprocess.run(cmd_merge, shell=True, capture_output=True, text=True)
+            
+            if result_merge.returncode == 0:
+                print("  ✅ 合併成功！")
+                return True
+            else:
+                print(f"  ⚠️ 合併失敗")
+                raise Exception("合併失敗")
+                
+        except Exception as e:
+            print(f"  ⚠️ 方法1失敗: {e}")
+            print("  📝 嘗試方法2: filter_complex 一次性處理")
+            
+            # 方法2: 使用 filter_complex 一次性處理
+            try:
+                command2 = f'''ffmpeg -y -i "{video1_path}" -i "{video2_path}" -filter_complex "[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1[v0];[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1[v1];[0:a]aresample=44100,aformat=sample_fmts=fltp:sample_rates=44100[a0];[1:a]aresample=44100,aformat=sample_fmts=fltp:sample_rates=44100[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k "{output_path}"'''
+                result2 = subprocess.run(command2, shell=True, capture_output=True, text=True)
+                
+                if result2.returncode == 0:
+                    print("  ✅ 方法2合併成功！")
+                    return True
+                else:
+                    print(f"  ⚠️ 方法2也失敗")
+                    return False
+            except Exception as e2:
+                print(f"  ⚠️ 方法2異常: {e2}")
+                return False
+        finally:
+            # 清理臨時文件
+            for temp_file in [temp_video1, temp_video2]:
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                        print(f"    🗑️  已清理: {temp_file}")
+                    except:
+                        pass
+        
+        return False
+
     def auto_edit_segments(self, face_segments, slide_segments, segments_info, output_path):
         """根據原始順序自動剪接所有段落"""
         print("🎬 開始自動剪接段落...")
@@ -1676,51 +1789,163 @@ class DeepVideoTranslationApp:
                 print(f"    ❌ 簡報段落 {slide_idx} 文件不存在: {segment_path}")
             slide_idx += 1
         
+        print(f"  📊 段落映射統計:")
+        print(f"     人臉段落: {len(face_map)} 個")
+        print(f"     簡報段落: {len(slide_map)} 個")
+        print(f"     段落信息: {len(segments_info)} 個")
+        
+        # 檢查 segments_info 是否完整
+        face_count_in_info = sum(1 for s in segments_info if s['type'] == 'face')
+        slide_count_in_info = sum(1 for s in segments_info if s['type'] == 'slide')
+        total_files = len(face_map) + len(slide_map)
+        total_in_info = face_count_in_info + slide_count_in_info
+        
+        print(f"\n  🔍 段落完整性檢查:")
+        print(f"     segments_info中記錄: {face_count_in_info} 個人臉 + {slide_count_in_info} 個簡報 = {total_in_info} 個")
+        print(f"     實際處理文件數量: {len(face_map)} 個人臉 + {len(slide_map)} 個簡報 = {total_files} 個")
+        
         # 按原始順序排列段落
         ordered_segments = []
         face_counter = 1
         slide_counter = 1
         
-        print("  🔄 按原始順序排列段落:")
-        for i, segment in enumerate(segments_info):
-            segment_type = segment['type']
-            if segment_type == 'face' and face_counter in face_map:
+        if total_in_info == total_files:
+            # 方案A: segments_info 完整，按照記錄的時間軸順序合併
+            print(f"\n  ✅ 使用方案A: 按照 segments_info 的時間軸順序合併")
+            print("  🎬 剪輯時間軸:")
+            
+            for i, segment in enumerate(segments_info):
+                segment_type = segment['type']
+                if segment_type == 'face' and face_counter in face_map:
+                    segment_path = face_map[face_counter]
+                    # 確保使用處理後的檔案（_processed.mp4）
+                    if not segment_path.endswith('_processed.mp4'):
+                        base_name = os.path.splitext(os.path.basename(segment_path))[0]
+                        processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
+                        if os.path.exists(processed_path):
+                            segment_path = processed_path
+                    
+                    ordered_segments.append(segment_path)
+                    start_time = segment['start_frame'] / 25.0  # 假設 25fps
+                    end_time = segment['end_frame'] / 25.0
+                    print(f"    {i+1}. [{start_time:.2f}s - {end_time:.2f}s] 👤 人臉段落 {face_counter}: {os.path.basename(segment_path)}")
+                    face_counter += 1
+                    
+                elif segment_type == 'slide' and slide_counter in slide_map:
+                    segment_path = slide_map[slide_counter]
+                    # 確保使用處理後的檔案（_processed.mp4）
+                    if not segment_path.endswith('_processed.mp4'):
+                        base_name = os.path.splitext(os.path.basename(segment_path))[0]
+                        processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
+                        if os.path.exists(processed_path):
+                            segment_path = processed_path
+                    
+                    ordered_segments.append(segment_path)
+                    start_time = segment['start_frame'] / 25.0
+                    end_time = segment['end_frame'] / 25.0
+                    print(f"    {i+1}. [{start_time:.2f}s - {end_time:.2f}s] 📊 簡報段落 {slide_counter}: {os.path.basename(segment_path)}")
+                    slide_counter += 1
+                    
+                else:
+                    print(f"    {i+1}. ⚠️ 跳過段落: {segment_type} (無對應文件)")
+        
+        else:
+            # 方案B: segments_info 不完整，智能合併所有處理後的文件
+            print(f"\n  ⚠️ segments_info 不完整！使用方案B: 智能檢測並合併所有處理文件")
+            print(f"     原因: segments_info 記錄 {total_in_info} 個段落，但實際處理了 {total_files} 個文件")
+            print(f"\n  🎬 剪輯策略: 先合併所有人臉段落，再合併所有簡報段落")
+            
+            # 先按照 segments_info 中有的進行排列
+            for i, segment in enumerate(segments_info):
+                segment_type = segment['type']
+                if segment_type == 'face' and face_counter in face_map:
+                    segment_path = face_map[face_counter]
+                    if not segment_path.endswith('_processed.mp4'):
+                        base_name = os.path.splitext(os.path.basename(segment_path))[0]
+                        processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
+                        if os.path.exists(processed_path):
+                            segment_path = processed_path
+                    ordered_segments.append(segment_path)
+                    print(f"    {len(ordered_segments)}. 👤 人臉段落 {face_counter} (來自info): {os.path.basename(segment_path)}")
+                    face_counter += 1
+                    
+                elif segment_type == 'slide' and slide_counter in slide_map:
+                    segment_path = slide_map[slide_counter]
+                    if not segment_path.endswith('_processed.mp4'):
+                        base_name = os.path.splitext(os.path.basename(segment_path))[0]
+                        processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
+                        if os.path.exists(processed_path):
+                            segment_path = processed_path
+                    ordered_segments.append(segment_path)
+                    print(f"    {len(ordered_segments)}. 📊 簡報段落 {slide_counter} (來自info): {os.path.basename(segment_path)}")
+                    slide_counter += 1
+            
+            # 添加 segments_info 中未包含的剩餘人臉段落
+            print("\n  📎 添加剩餘的人臉段落:")
+            while face_counter in face_map:
                 segment_path = face_map[face_counter]
-                # 確保使用處理後的檔案（_processed.mp4）
                 if not segment_path.endswith('_processed.mp4'):
                     base_name = os.path.splitext(os.path.basename(segment_path))[0]
                     processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
                     if os.path.exists(processed_path):
                         segment_path = processed_path
-                        print(f"    {i+1}. 👤 人臉段落 {face_counter} (已處理): {os.path.basename(segment_path)}")
-                    else:
-                        print(f"    {i+1}. 👤 人臉段落 {face_counter} (原始): {os.path.basename(segment_path)}")
-                else:
-                    print(f"    {i+1}. 👤 人臉段落 {face_counter}: {os.path.basename(segment_path)}")
                 ordered_segments.append(segment_path)
+                print(f"    {len(ordered_segments)}. 👤 人臉段落 {face_counter} [新增]: {os.path.basename(segment_path)}")
                 face_counter += 1
-            elif segment_type == 'slide' and slide_counter in slide_map:
+            
+            # 添加 segments_info 中未包含的剩餘簡報段落
+            print("\n  📎 添加剩餘的簡報段落:")
+            while slide_counter in slide_map:
                 segment_path = slide_map[slide_counter]
-                # 確保使用處理後的檔案（_processed.mp4）
                 if not segment_path.endswith('_processed.mp4'):
                     base_name = os.path.splitext(os.path.basename(segment_path))[0]
                     processed_path = os.path.join(os.path.dirname(segment_path), f"{base_name}_processed.mp4")
                     if os.path.exists(processed_path):
                         segment_path = processed_path
-                        print(f"    {i+1}. 📊 簡報段落 {slide_counter} (已處理): {os.path.basename(segment_path)}")
-                    else:
-                        print(f"    {i+1}. 📊 簡報段落 {slide_counter} (原始): {os.path.basename(segment_path)}")
-                else:
-                    print(f"    {i+1}. 📊 簡報段落 {slide_counter}: {os.path.basename(segment_path)}")
                 ordered_segments.append(segment_path)
+                print(f"    {len(ordered_segments)}. 📊 簡報段落 {slide_counter} [新增]: {os.path.basename(segment_path)}")
                 slide_counter += 1
-            else:
-                print(f"    {i+1}. ⚠️ 跳過段落: {segment_type} (無對應文件)")
         
         if not ordered_segments:
             raise ValueError("沒有找到可以剪接的段落")
         
         print(f"  📝 最終剪接列表共 {len(ordered_segments)} 個段落")
+        
+        # 特殊情況：如果只有兩個段落（典型的 face + slide 情況），使用專門的合併函數
+        if len(ordered_segments) == 2 and len(face_map) == 1 and len(slide_map) == 1:
+            print(f"\n  🎯 檢測到典型的兩段落情況 (1個人臉 + 1個簡報)")
+            print(f"     使用專門的合併函數確保格式統一...")
+            
+            # 找出哪個是 face 哪個是 slide
+            face_video = face_map[1] if 1 in face_map else None
+            slide_video = slide_map[1] if 1 in slide_map else None
+            
+            if face_video and slide_video:
+                # 確保使用處理後的檔案
+                if not face_video.endswith('_processed.mp4'):
+                    base_name = os.path.splitext(os.path.basename(face_video))[0]
+                    processed_path = os.path.join(os.path.dirname(face_video), f"{base_name}_processed.mp4")
+                    if os.path.exists(processed_path):
+                        face_video = processed_path
+                
+                if not slide_video.endswith('_processed.mp4'):
+                    base_name = os.path.splitext(os.path.basename(slide_video))[0]
+                    processed_path = os.path.join(os.path.dirname(slide_video), f"{base_name}_processed.mp4")
+                    if os.path.exists(processed_path):
+                        slide_video = processed_path
+                
+                # 根據 ordered_segments 的順序決定合併順序
+                video1 = ordered_segments[0]
+                video2 = ordered_segments[1]
+                
+                print(f"     順序: {os.path.basename(video1)} → {os.path.basename(video2)}")
+                
+                if self.merge_two_videos(video1, video2, output_path):
+                    print("✅ 兩段落合併成功！")
+                    self.verify_output_file(output_path)
+                    return
+                else:
+                    print("⚠️ 專門合併函數失敗，嘗試通用方法...")
         
         # 創建段落列表文件
         segment_list_path = "temp/segment_list.txt"
@@ -1766,19 +1991,18 @@ class DeepVideoTranslationApp:
                 print("✅ 單文件複製完成")
                 return
             elif len(ordered_segments) == 2:
-                # 兩個文件，統一解析度後合併
-                input_params = ' '.join([f'-i "{seg}"' for seg in ordered_segments])
-                # 統一到1280x720解析度，並確保音頻格式一致
-                command = f'ffmpeg -y {input_params} -filter_complex "[0:v]scale=1280:720,setsar=1:1[v0];[1:v]scale=1280:720,setsar=1:1[v1];[0:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a0];[1:a]aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac "{output_path}"'
-                print(f"  🔧 執行命令: {command}")
+                # 兩個文件，使用 filter_complex 一次性統一並合併
+                print("  🔧 使用 filter_complex 一次性處理...")
+                # 使用與 manual_merge.py 相同的參數
+                command = f'''ffmpeg -y -i "{ordered_segments[0]}" -i "{ordered_segments[1]}" -filter_complex "[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1[v0];[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1[v1];[0:a]aresample=44100,aformat=sample_fmts=fltp:sample_rates=44100[a0];[1:a]aresample=44100,aformat=sample_fmts=fltp:sample_rates=44100[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k "{output_path}"'''
                 result = subprocess.run(command, shell=True, capture_output=True, text=True)
                 
                 if result.returncode == 0:
-                    print("✅ filter_complex 解析度統一合併成功")
+                    print("✅ 方法1: filter_complex 合併成功")
                     self.verify_output_file(output_path)
                     return
                 else:
-                    print(f"⚠️ filter_complex 解析度統一失敗: {result.stderr}")
+                    print(f"⚠️ filter_complex 失敗，嘗試方法2...")
             else:
                 # 多個文件，統一解析度後合併
                 input_params = ' '.join([f'-i "{seg}"' for seg in ordered_segments])
@@ -1808,32 +2032,34 @@ class DeepVideoTranslationApp:
         except Exception as e:
             print(f"⚠️ filter_complex 方法異常: {e}")
         
-        # 方法2：先統一解析度再使用concat demuxer
+        # 方法2：先統一解析度再使用concat demuxer（最可靠的方法）
         try:
-            print("🔧 方法2: 統一解析度後使用 concat demuxer...")
+            print("🔧 方法2: 統一格式後使用 concat demuxer（推薦）...")
             # 創建統一解析度的臨時文件
             normalized_segments = []
             for i, segment in enumerate(ordered_segments):
                 normalized_path = segment.replace('.mp4', f'_normalized_{i}.mp4')
-                # 使用列表形式避免 shell 解析括號問題
+                # 使用與 manual_merge.py 相同的成功參數
                 cmd_args = [
                     'ffmpeg', '-y', '-i', segment,
-                    '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1:1',
-                    '-af', 'aformat=sample_fmts=fltp:sample_rates=22050:channel_layouts=mono',
-                    '-c:v', 'libx264', '-c:a', 'aac', normalized_path
+                    '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30',
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '192k', '-ar', '44100',
+                    normalized_path
                 ]
-                print(f"  📐 統一段落 {i+1} 解析度...")
+                print(f"  📐 統一段落 {i+1}/{len(ordered_segments)} 格式 (1280x720, h264, 30fps)...")
                 result = subprocess.run(cmd_args, capture_output=True, text=True)
                 
                 if result.returncode == 0:
                     normalized_segments.append(normalized_path)
+                    print(f"     ✅ 完成")
                 else:
-                    print(f"  ⚠️ 段落 {i+1} 解析度統一失敗: {result.stderr}")
+                    print(f"     ⚠️ 失敗: {result.stderr[-200:]}")
                     # 清理已創建的臨時文件
                     for temp_file in normalized_segments:
                         if os.path.exists(temp_file):
                             os.remove(temp_file)
-                    raise Exception(f"解析度統一失敗")
+                    raise Exception(f"段落 {i+1} 格式統一失敗")
             
             # 創建新的段落列表文件
             normalized_list_path = "temp/normalized_segment_list.txt"
@@ -1842,12 +2068,13 @@ class DeepVideoTranslationApp:
                     abs_path = os.path.abspath(seg_path)
                     f.write(f"file '{abs_path}'\n")
             
-            # 使用concat demuxer合併
+            print(f"  🔧 合併 {len(normalized_segments)} 個統一格式的段落...")
+            # 使用concat demuxer合併（因為格式已統一，可以用 copy）
             command = f'ffmpeg -y -f concat -safe 0 -i "{normalized_list_path}" -c copy "{output_path}"'
-            print(f"  🔧 執行合併命令: {command}")
             result = subprocess.run(command, shell=True, capture_output=True, text=True)
             
             # 清理臨時文件
+            print(f"  🗑️  清理臨時文件...")
             for temp_file in normalized_segments:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
@@ -1855,13 +2082,14 @@ class DeepVideoTranslationApp:
                 os.remove(normalized_list_path)
             
             if result.returncode == 0:
-                print("✅ 統一解析度 concat demuxer 合併成功")
+                print("✅ 方法2: 統一格式 concat demuxer 合併成功！")
                 self.verify_output_file(output_path)
                 return
             else:
-                print(f"⚠️ 統一解析度 concat demuxer 失敗: {result.stderr}")
+                print(f"⚠️ 合併失敗: {result.stderr[-300:]}")
+                raise Exception("concat demuxer 合併失敗")
         except Exception as e:
-            print(f"⚠️ 統一解析度 concat demuxer 方法異常: {e}")
+            print(f"⚠️ 方法2異常: {e}")
         
         # 方法3：直接使用原始concat demuxer (可能失敗但值得嘗試)
         try:
@@ -2023,7 +2251,7 @@ class DeepVideoTranslationApp:
         self.local_llm_url = local_llm_url
         self.local_llm_model = local_llm_model
         
-        self.log(f"🔧 配置：TTS 引擎={tts_engine}, API 提供者={api_provider}")
+        self.log(f"🔧 配置：TTS 引擎=F5-TTS (固定), API 提供者={api_provider}")
         if api_provider == 'local_llm':
             self.log(f"🔧 本地 LLM：URL={local_llm_url}, 模型={local_llm_model}")
         
@@ -2131,9 +2359,15 @@ class DeepVideoTranslationApp:
 # Flask 路由
 
 @app.route('/')
+def landing():
+    """介紹頁面"""
+    return render_template('landing.html')
+
+
+@app.route('/app')
 def home():
-    """首頁"""
-    return render_template('index.html')
+    """主功能頁面"""
+    return render_template('app.html')
 
 
 @app.route('/get_home_dir')
@@ -2145,7 +2379,7 @@ def get_home_dir():
 
 @app.route('/process', methods=['POST'])
 def process_video():
-    """處理影片的 API 端點"""
+    """處理影片的 API 端點（使用排隊系統）"""
     try:
         # 檢查文件是否存在
         if 'video' not in request.files:
@@ -2155,6 +2389,31 @@ def process_video():
         
         if video_file.filename == '':
             return jsonify({'error': '沒有選擇影片'}), 400
+        
+        # 獲取 email（必須）
+        email = request.form.get('email', '').strip()
+        if not email:
+            return jsonify({'error': '請輸入 Email 地址'}), 400
+        
+        # 簡單的 email 格式驗證
+        import re
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'error': 'Email 格式不正確'}), 400
+        
+        # 檢查 email 冷卻期
+        available, remaining = queue_manager.check_email_cooldown(email)
+        if not available:
+            hours = int(remaining // 3600)
+            minutes = int((remaining % 3600) // 60)
+            days = hours // 24
+            hours = hours % 24
+            
+            if days > 0:
+                cooldown_msg = f"此 Email 地址需等待 {days} 天 {hours} 小時後才能再次使用"
+            else:
+                cooldown_msg = f"此 Email 地址需等待 {hours} 小時 {minutes} 分鐘後才能再次使用"
+            
+            return jsonify({'error': cooldown_msg}), 429
         
         # 獲取參數
         api_key = request.form.get('api_key')
@@ -2167,7 +2426,7 @@ def process_video():
         output_directory = request.form.get('output_directory', 'audio_files').strip()
         
         # 新增：TTS 引擎和 API 提供者參數
-        tts_engine = request.form.get('tts_engine', 'xtts')
+        tts_engine = request.form.get('tts_engine', 'f5tts')
         api_provider = request.form.get('api_provider', 'gemini')
         local_llm_url = request.form.get('local_llm_url', 'http://localhost:11434/api/generate')
         local_llm_model = request.form.get('local_llm_model', 'llama3.2')
@@ -2177,6 +2436,24 @@ def process_video():
         filename = secure_filename(video_file.filename)
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         video_file.save(input_path)
+        
+        # 檢測影片時長
+        video_duration = get_video_duration(input_path)
+        
+        if video_duration is None:
+            # 無法檢測時長，給個警告但繼續
+            print(f"⚠️  無法檢測影片時長: {filename}")
+        elif video_duration > 60:  # 1 分鐘
+            # 刪除上傳的文件
+            try:
+                os.remove(input_path)
+            except:
+                pass
+            
+            duration_str = format_duration(video_duration)
+            return jsonify({
+                'error': f'影片時長 {duration_str} 超過限制（最多 1 分鐘）'
+            }), 400
         
         # 設置輸出路徑
         base_name = os.path.splitext(filename)[0]
@@ -2191,7 +2468,87 @@ def process_video():
         # 檢查是否為絕對路徑
         is_absolute = output_directory.startswith('/')
         
-        # 移除危險的 .. 路徑遍歷（但保留絕對路徑的開頭斜杠）
+        # 移除危險的 .. 路徑遍歷
+        if not is_absolute:
+            output_directory = output_directory.replace('..', '').strip('/')
+            if not output_directory:
+                output_directory = 'audio_files'
+        else:
+            output_directory = output_directory.replace('..', '')
+        
+        # 使用自定義文件名或默認文件名
+        if custom_output_filename:
+            if not custom_output_filename.lower().endswith('.mp4'):
+                output_filename = f"{custom_output_filename}.mp4"
+            else:
+                output_filename = custom_output_filename
+            output_filename = secure_filename(output_filename)
+        else:
+            output_filename = f"{base_name}_translated.mp4"
+        
+        # 創建輸出目錄並設置完整路徑
+        output_path = os.path.join(output_directory, output_filename)
+        
+        # 確保輸出目錄存在
+        try:
+            os.makedirs(output_directory, exist_ok=True)
+        except Exception as e:
+            return jsonify({'error': f'無法創建輸出目錄：{str(e)}'}), 400
+        
+        # 創建任務 ID
+        task_id = str(uuid.uuid4())
+        
+        # 準備參數
+        params = {
+            'input_path': input_path,
+            'output_path': output_path,
+            'api_key': api_key,
+            'voice_language': voice_language,
+            'slide_language': slide_language,
+            'enable_slide_translation': enable_slide_translation,
+            'min_segment_duration': min_segment_duration,
+            'hash_threshold': hash_threshold,
+            'tts_engine': tts_engine,
+            'api_provider': api_provider,
+            'local_llm_url': local_llm_url,
+            'local_llm_model': local_llm_model
+        }
+        
+        # 添加任務到隊列
+        success, message = queue_manager.add_task(
+            task_id,
+            email,
+            filename,
+            video_duration,
+            params
+        )
+        
+        if not success:
+            # 刪除上傳的文件
+            try:
+                os.remove(input_path)
+            except:
+                pass
+            return jsonify({'error': message}), 400
+        
+        # 獲取隊列統計
+        stats = queue_manager.get_queue_stats()
+        queue_position = queue_manager.get_queue_position(task_id)
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': message,
+            'queue_position': queue_position,
+            'queue_stats': stats,
+            'email': email,
+            'video_duration': format_duration(video_duration) if video_duration else '未知'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
         if not is_absolute:
             output_directory = output_directory.replace('..', '').strip('/')
             if not output_directory:
@@ -2256,48 +2613,37 @@ def process_video():
         return jsonify({'error': str(e)}), 500
 
 
-def process_video_task(task_id):
-    """在背景處理影片的任務"""
-    task = tasks.get(task_id)
-    if not task:
-        return
-    
+@app.route('/queue/status/<task_id>')
+def queue_status(task_id):
+    """查詢任務在隊列中的狀態"""
     try:
-        task.status = 'processing'
-        task.progress = 0
-        task.log('🚀 開始處理影片...', 'info')
-        task.log('📥 正在初始化處理器...', 'info')
+        task_info = queue_manager.get_task_info(task_id)
         
-        # 創建處理器實例
-        processor = DeepVideoTranslationApp(task)
+        if not task_info:
+            return jsonify({'error': '任務不存在'}), 404
         
-        # 執行處理
-        params = task.params
-        processor.process(
-            input_path=params['input_path'],
-            output_path=params['output_path'],
-            api_key=params['api_key'],
-            language=params['voice_language'],
-            slide_language=params['slide_language'],
-            enable_slide_translation=params['enable_slide_translation'],
-            min_segment_duration=params['min_segment_duration'],
-            hash_threshold=params['hash_threshold'],
-            tts_engine=params.get('tts_engine', 'xtts'),
-            api_provider=params.get('api_provider', 'gemini'),
-            local_llm_url=params.get('local_llm_url', 'http://localhost:11434/api/generate'),
-            local_llm_model=params.get('local_llm_model', 'llama3.2')
-        )
-        
-        task.status = 'completed'
-        task.output_path = params['output_path']
-        task.log('處理完成！', 'success')
-        
+        return jsonify({
+            'task_id': task_info['task_id'],
+            'status': task_info['status'],
+            'queue_position': task_info['queue_position'],
+            'created_at': task_info['created_at'],
+            'started_at': task_info['started_at'],
+            'completed_at': task_info['completed_at'],
+            'video_filename': task_info['video_filename'],
+            'video_duration': format_duration(task_info['video_duration']) if task_info['video_duration'] else '未知'
+        })
     except Exception as e:
-        task.status = 'failed'
-        task.error = str(e)
-        task.log(f'處理失敗: {str(e)}', 'error')
-        import traceback
-        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/queue/stats')
+def queue_stats():
+    """獲取隊列統計信息"""
+    try:
+        stats = queue_manager.get_queue_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/progress/<task_id>')
@@ -2413,12 +2759,98 @@ def download(task_id):
     )
 
 
+def process_task_wrapper(task_dict):
+    """
+    包裝函數，供後台任務處理器調用
+    
+    Args:
+        task_dict: 包含 task_id, email, video_filename, params 的字典
+        
+    Returns:
+        (成功, 輸出路徑, 錯誤訊息)
+    """
+    task_id = task_dict['task_id']
+    params = task_dict['params']
+    
+    try:
+        # 創建臨時任務對象用於記錄
+        class SimpleTask:
+            def __init__(self):
+                self.progress = 0
+                self.status = 'processing'
+                
+            def log(self, message, level='info'):
+                print(f"[{task_id}] {message}")
+                
+            def update_progress(self, progress, status=None):
+                self.progress = progress
+                if status:
+                    self.status = status
+                print(f"[{task_id}] Progress: {progress}%")
+        
+        simple_task = SimpleTask()
+        
+        # 創建處理器並執行
+        processor = DeepVideoTranslationApp(simple_task)
+        
+        processor.process(
+            input_path=params['input_path'],
+            output_path=params['output_path'],
+            api_key=params['api_key'],
+            language=params['voice_language'],
+            slide_language=params['slide_language'],
+            enable_slide_translation=params['enable_slide_translation'],
+            min_segment_duration=params['min_segment_duration'],
+            hash_threshold=params['hash_threshold'],
+            tts_engine=params.get('tts_engine', 'f5tts'),
+            api_provider=params.get('api_provider', 'gemini'),
+            local_llm_url=params.get('local_llm_url', 'http://localhost:11434/api/generate'),
+            local_llm_model=params.get('local_llm_model', 'llama3.2')
+        )
+        
+        # 複製到輸出儲存目錄
+        output_path = params['output_path']
+        if os.path.exists(output_path):
+            # 確保輸出儲存目錄存在
+            os.makedirs(app.config['OUTPUT_STORAGE'], exist_ok=True)
+            
+            # 複製到長期儲存
+            storage_filename = f"{task_id}_{os.path.basename(output_path)}"
+            storage_path = os.path.join(app.config['OUTPUT_STORAGE'], storage_filename)
+            
+            import shutil
+            shutil.copy2(output_path, storage_path)
+            
+            print(f"✅ 影片已儲存到: {storage_path}")
+            
+            return True, storage_path, None
+        else:
+            return False, None, "輸出文件不存在"
+            
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        return False, None, error_msg
+
+
+# 初始化並啟動後台任務處理器
+task_processor = TaskProcessor(process_task_wrapper, check_interval=5)
+
+
 if __name__ == "__main__":
     # 確保必要的目錄存在
     os.makedirs('temp/uploads', exist_ok=True)
     os.makedirs('audio_files', exist_ok=True)
+    os.makedirs(app.config['OUTPUT_STORAGE'], exist_ok=True)
+    
+    # 啟動後台任務處理器
+    task_processor.start()
     
     # 啟動 Flask 應用
     print("🚀 Deep Video Translation 服務啟動中...")
     print("📍 請在瀏覽器中打開: http://localhost:32123")
-    app.run(debug=True, host='0.0.0.0', port=32123, threaded=True)
+    
+    try:
+        app.run(debug=True, host='0.0.0.0', port=32123, threaded=True, use_reloader=False)
+    finally:
+        task_processor.stop()

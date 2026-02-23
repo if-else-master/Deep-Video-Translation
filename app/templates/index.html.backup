@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deep Video Translation - 影片智能翻譯系統</title>
+    <title>Deep Video Translation - AI 影片智能翻譯系統</title>
     <style>
         * {
             margin: 0;
@@ -392,15 +392,15 @@
     <div class="container">
         <div class="header">
             <h1>AI 深度影片翻譯服務</h1>
-            <p>支援 8 種語言：日文 • 英文 • 中文 • 德文 • 法文 • 俄文 • 義大利文 • 西班牙文</p>
-            <p style="margin-top: 8px; font-size: 0.95em;">多 API 支援：Gemini • OpenAI • Claude • 本地 LLM &nbsp;|&nbsp; TTS 引擎：F5-TTS</p>
+            <p>🌍 支援 8 種語言：日文 • 英文 • 中文 • 德文 • 法文 • 俄文 • 義大利文 • 西班牙文</p>
+            <p style="margin-top: 8px; font-size: 0.95em;">🤖 多 API 支援：Gemini • OpenAI • Claude • 本地 LLM &nbsp;|&nbsp; 🎤 TTS 引擎：XTTS-v2 • F5-TTS</p>
         </div>
 
         <div class="content">
             <form id="translationForm">
                 <!-- API 提供者選擇 -->
                 <div class="form-group">
-                    <label for="apiProvider">翻譯 API 提供者</label>
+                    <label for="apiProvider">🤖 翻譯 API 提供者</label>
                     <select id="apiProvider" name="api_provider" required>
                         <option value="gemini" selected>Google Gemini</option>
                         <option value="openai">OpenAI (GPT-4o-mini)</option>
@@ -411,13 +411,13 @@
 
                 <!-- API Key -->
                 <div class="form-group" id="apiKeyGroup">
-                    <label for="apiKey" id="apiKeyLabel">Gemini API Key</label>
+                    <label for="apiKey" id="apiKeyLabel">🔑 Gemini API Key</label>
                     <input type="password" id="apiKey" name="api_key" placeholder="輸入您的 API Key" required>
                 </div>
 
                 <!-- 本地 LLM 配置（僅當選擇本地 LLM 時顯示） -->
                 <div class="form-group" id="localLlmConfig" style="display: none;">
-                    <label>本地 LLM 配置</label>
+                    <label>🖥️ 本地 LLM 配置</label>
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                         <div style="margin-bottom: 10px;">
                             <label for="localLlmUrl" style="font-size: 0.9em; color: #666;">API 端點 URL</label>
@@ -428,7 +428,7 @@
                             <input type="text" id="localLlmModel" name="local_llm_model" value="llama3.2" placeholder="例如: llama3.2, qwen2.5, mistral" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
                         </div>
                         <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 5px; font-size: 0.85em; color: #856404;">
-                            <strong>提示：</strong>
+                            💡 <strong>提示：</strong>
                             <ul style="margin: 5px 0 0 15px; line-height: 1.6;">
                                 <li>Ollama 默認端口: 11434</li>
                                 <li>LM Studio 默認端口: 1234</li>
@@ -438,14 +438,23 @@
                     </div>
                 </div>
 
-                <!-- TTS 語音克隆引擎：固定使用 F5-TTS -->
-                <input type="hidden" id="ttsEngine" name="tts_engine" value="f5tts">
+                <!-- TTS 語音克隆引擎選擇 -->
+                <div class="form-group">
+                    <label for="ttsEngine">🎤 語音克隆引擎</label>
+                    <select id="ttsEngine" name="tts_engine" required>
+                        <option value="xtts" selected>XTTS-v2 (Coqui TTS)</option>
+                        <option value="f5tts">F5-TTS (高品質)</option>
+                    </select>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        💡 XTTS-v2 速度較快；F5-TTS 品質較高但需要更多計算資源
+                    </small>
+                </div>
 
                 <!-- 影片上傳區域 -->
                 <div class="form-group">
                     <label>上傳影片</label>
                     <div class="upload-area" id="uploadArea">
-                        <div class="upload-icon">⬆</div>
+                        <div class="upload-icon">📤</div>
                         <div class="upload-text">拖放影片到這裡或點擊上傳</div>
                         <div class="upload-subtext">支持 MP4 格式</div>
                     </div>
@@ -463,20 +472,20 @@
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
                         <button type="button" onclick="setOutputDir('${HOME}/Desktop')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            桌面
+                            🖥️ 桌面
                         </button>
                         <button type="button" onclick="setOutputDir('${HOME}/Documents')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            文件
+                            📄 文件
                         </button>
                         <button type="button" onclick="setOutputDir('${HOME}/Downloads')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            下載
+                            📥 下載
                         </button>
                         <button type="button" onclick="setOutputDir('audio_files')" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.9em;">
-                            audio_files
+                            🎵 audio_files
                         </button>
                     </div>
                     <small style="color: #666; margin-top: 8px; display: block;">
-                        提示：輸入完整路徑或點擊快捷按鈕。例如：/Users/raychang/Desktop/我的影片
+                        💡 輸入完整路徑或點擊快捷按鈕。例如：/Users/raychang/Desktop/我的影片
                     </small>
                 </div>
 
@@ -505,7 +514,7 @@
                 <!-- 語音翻譯語言 -->
                 <div class="two-column">
                     <div class="form-group">
-                        <label for="voiceLanguage">語音翻譯語言</label>
+                        <label for="voiceLanguage">🎤 語音翻譯語言</label>
                         <select id="voiceLanguage" name="voice_language" required>
                             <option value="日文" selected>日文 (Japanese)</option>
                             <option value="英文">英文 (English)</option>
@@ -519,7 +528,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="slideLanguage">投影片翻譯語言</label>
+                        <label for="slideLanguage">📊 投影片翻譯語言</label>
                         <select id="slideLanguage" name="slide_language">
                             <option value="Japanese" selected>Japanese (日文)</option>
                             <option value="English">English (英文)</option>
@@ -541,9 +550,9 @@
 
                 <!-- 進階設定 -->
                 <div class="advanced-settings" id="advancedSettings">
-                    <h3 style="margin-bottom: 15px;">進階設定</h3>
+                    <h3 style="margin-bottom: 15px;">⚙️ 進階設定</h3>
                     <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9em; color: #856404;">
-                        <strong>提示：</strong>啟用「投影片翻譯」時才會進行分段處理。如果影片只有人臉部分，建議關閉投影片翻譯以加快處理速度。
+                        <strong>💡 提示：</strong>啟用「投影片翻譯」時才會進行分段處理。如果影片只有人臉部分，建議關閉投影片翻譯以加快處理速度。
                     </div>
                     <div class="settings-grid">
                         <div class="form-group">
@@ -590,18 +599,18 @@
 
             <!-- 結果顯示區域 -->
             <div class="result-container" id="resultContainer">
-                <h3>處理完成！</h3>
+                <h3>✅ 處理完成！</h3>
                 <p>您的影片已成功處理完成。</p>
                 
                 <div style="margin-top: 15px; padding: 15px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 5px;">
-                    <strong style="color: #2e7d32;">文件保存位置：</strong>
+                    <strong style="color: #2e7d32;">📁 文件保存位置：</strong>
                     <div style="margin-top: 8px; padding: 10px; background: white; border-radius: 5px; font-family: monospace; color: #333;">
                         <span id="savedFilePath"></span>
                     </div>
                 </div>
                 
                 <div style="margin-top: 15px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 5px;">
-                    <strong>下載說明：</strong>
+                    <strong>💡 下載說明：</strong>
                     <ol style="margin: 10px 0 0 20px; color: #856404; line-height: 1.8;">
                         <li>點擊下方的「下載到電腦」按鈕</li>
                         <li><strong>瀏覽器會自動彈出文件保存對話框</strong></li>
@@ -657,10 +666,10 @@
             
             // 更新 API Key 標籤和提示
             const labels = {
-                'gemini': 'Gemini API Key',
-                'openai': 'OpenAI API Key',
-                'claude': 'Claude API Key',
-                'local_llm': 'API Key (本地 LLM 不需要)'
+                'gemini': '🔑 Gemini API Key',
+                'openai': '🔑 OpenAI API Key',
+                'claude': '🔑 Claude API Key',
+                'local_llm': '🔑 API Key (本地 LLM 不需要)'
             };
             
             const placeholders = {
@@ -970,9 +979,9 @@
                     
                     // 添加日誌
                     if (data.log) {
-                        const logType = data.log.includes('錯誤') || data.log.includes('失敗') ? 'error' :
-                                       data.log.includes('成功') || data.log.includes('完成') ? 'success' :
-                                       data.log.includes('警告') ? 'warning' : 'info';
+                        const logType = data.log.includes('錯誤') || data.log.includes('失敗') || data.log.includes('❌') ? 'error' :
+                                       data.log.includes('成功') || data.log.includes('完成') || data.log.includes('✅') ? 'success' :
+                                       data.log.includes('警告') || data.log.includes('⚠️') ? 'warning' : 'info';
                         addLog(data.log, logType);
                     }
                     
@@ -981,7 +990,7 @@
                         cleanupProgress();
                         updateProgress(100, '處理完成！');
                         updateStatus('ready');
-                        addLog('影片處理完成！', 'success');
+                        addLog('✅ 影片處理完成！', 'success');
                         
                         // 顯示下載按鈕並保存下載 URL
                         resultContainer.classList.add('show');
@@ -1001,7 +1010,7 @@
                     if (data.status === 'failed') {
                         cleanupProgress();
                         updateStatus('error');
-                        addLog(`處理失敗: ${data.error}`, 'error');
+                        addLog(`❌ 處理失敗: ${data.error}`, 'error');
                         
                         submitBtn.disabled = false;
                         submitBtn.textContent = '開始處理影片';
@@ -1074,7 +1083,7 @@
         async function downloadFile() {
             const downloadUrl = downloadBtn.getAttribute('data-download-url');
             if (!downloadUrl) {
-                alert('下載鏈接不可用，請重新處理影片');
+                alert('❌ 下載鏈接不可用，請重新處理影片');
                 return;
             }
 
@@ -1096,8 +1105,8 @@
                 fileName += '.mp4';
             }
 
-            addLog(`準備下載: ${fileName}`, 'info');
-            addLog('瀏覽器即將彈出「另存為」對話框，請選擇保存位置', 'info');
+            addLog(`📥 準備下載: ${fileName}`, 'info');
+            addLog('💡 瀏覽器即將彈出「另存為」對話框，請選擇保存位置', 'info');
 
             try {
                 // 方法1: 嘗試使用 fetch + blob 下載（確保觸發另存為對話框）
@@ -1125,14 +1134,14 @@
                     window.URL.revokeObjectURL(url);
                 }, 100);
                 
-                addLog('下載已開始！請在彈出的對話框中選擇保存位置', 'success');
-                addLog('您可以將文件保存到任意資料夾', 'info');
+                addLog('✅ 下載已開始！請在彈出的對話框中選擇保存位置', 'success');
+                addLog('📂 您可以將文件保存到任意資料夾', 'info');
                 
             } catch (error) {
                 console.error('下載錯誤:', error);
                 
                 // 方法2: 備用方案 - 直接使用 <a> 標籤
-                addLog('使用備用下載方法...', 'warning');
+                addLog('⚠️ 使用備用下載方法...', 'warning');
                 const link = document.createElement('a');
                 link.href = downloadUrl;
                 link.download = fileName;
@@ -1146,7 +1155,7 @@
                     document.body.removeChild(link);
                 }, 100);
                 
-                addLog('下載已開始（備用方法）', 'success');
+                addLog('✅ 下載已開始（備用方法）', 'success');
             }
         }
     </script>

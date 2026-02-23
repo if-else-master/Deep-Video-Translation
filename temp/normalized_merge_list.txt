@@ -1,0 +1,2 @@
+file '/Users/raychang/Documents/專案/Deep-Video-Translation/temp/face_normalized.mp4'
+file '/Users/raychang/Documents/專案/Deep-Video-Translation/temp/slide_normalized.mp4'

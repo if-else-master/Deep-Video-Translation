@@ -1,74 +1,162 @@
+# ==============================================================================
+# Deep Video Translation - Complete Requirements
+# 完整的依賴套件清單，用於專案轉移
+# ==============================================================================
+
+# Core Python Libraries
 certifi==2024.12.14
 charset-normalizer==3.4.1
-ffmpeg-python==0.2.0
 filelock==3.16.1
 fsspec==2024.12.0
 future==1.0.0
 idna==3.10
-Jinja2==3.1.5
-#llvmlite==0.43.0
-llvmlite==0.42.0
-MarkupSafe==3.0.2
+setuptools==75.6.0
+typing_extensions==4.12.2
+urllib3==2.3.0
 more-itertools==10.5.0
-mpmath==1.3.0
-networkx==2.8.8
-#numba==0.60.0
 
+# Template Engine
+Jinja2==3.1.5
+MarkupSafe==3.0.2
+
+# Math and Scientific Computing
+numpy==1.25.2
+scipy==1.11.2
+sympy==1.13.1
+mpmath==1.3.0
+
+# JIT Compilation
+llvmlite==0.42.0
 numba==0.59.0
 
-
-#numpy==2.0.2
-#openai-whisper
-pillow==11.0.0
-regex==2024.11.6
-requests==2.32.3
-setuptools==75.6.0
-sympy==1.13.1
-tiktoken==0.8.0
+# Deep Learning - PyTorch
 torch==2.4.0
 torchaudio==2.4.0
 torchvision==0.19.0
-tqdm==4.67.1
-typing_extensions==4.12.2
-urllib3==2.3.0
-#torch>=2.1
-#torchaudio
-#torch==2.1.0
-#torchaudio==2.1.0
-#TTS==0.24.2
-#TTS
-coqui-tts==0.24.2
-scipy==1.11.2
-numpy==1.25.2
-soundfile
-#librosa==0.10.1
-librosa==0.10.1
-unidic-lite
-cutlet
-opencv-python
-scikit-image
+torchdiffeq==0.2.5
+
+# Computer Vision
+opencv-python==4.11.0.86
+opencv-python-headless==4.11.0.86
+pillow==10.1.0
+scikit-image==0.24.0
+imagehash==4.3.2
+face-alignment==1.3.4
+facexlib==0.2.5
 basicsr==1.4.2
 kornia==0.5.1
-face-alignment==1.3.4
-ninja==1.10.2.3
-einops==0.6.0
-facexlib==0.2.5
-#dlib
-gradio>=3.7.0
-google-genai
 
+# OCR and Text Processing
 easyocr==1.7.2
+pypinyin==0.54.0
 
-imagehash==4.3.2
+# Natural Language Processing
+regex==2024.11.6
+tiktoken==0.8.0
 
-pypinyin
+# Audio Processing
+soundfile==0.13.1
+librosa==0.10.1
 
-mesop
+# Text-to-Speech
+coqui-tts==0.24.2
+
+# Speech-to-Text
+openai-whisper==20250625
+
+# Japanese Text Processing
+unidic-lite==1.0.8
+cutlet==0.5.0
+
+# Wav2Lip Dependencies
+ninja==1.10.2.3
+einops==0.8.2
+
+# Web Framework - Flask
+flask==3.0.0
+werkzeug==3.1.3
+flask-cors==4.0.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# API and Networking
+requests==2.32.3
+google-genai==1.20.0
+
+# UI Framework
+gradio>=4.0.0
+mesop==1.1.0
+
+# Media Processing
+ffmpeg-python==0.2.0
+
+# Data Processing
+datasets==4.5.0
+cached_path==1.8.9
+
+# Transformers and ML Models
+x-transformers>=1.31.14
+
+# Chinese Text Processing
+rjieba==0.2.0
+
+# Text Processing
+unidecode==1.4.0
+
+# Configuration
+tomli==2.2.1
+
+# Network Graph
+networkx==2.8.8
+
+# Progress Bar
+tqdm==4.67.1
+
+# ==============================================================================
+# 安裝說明
+# ==============================================================================
+# 
+# 1. 創建虛擬環境：
+#    python -m venv .venv
+#    source .venv/bin/activate  # Mac/Linux
+#    .venv\Scripts\activate     # Windows
+#
+# 2. 升級 pip：
+#    pip install --upgrade pip
+#
+# 3. 安裝依賴：
+#    pip install -r requirements.txt
+#
+# 4. 環境設定：
+#    cp .env.example .env
+#    # 編輯 .env 填入您的 API 金鑰和 SMTP 設定
+#
+# 5. 字體文件：
+#    確保 app/ 目錄中有以下字體文件：
+#    - NotoSansCJKjp-Regular.otf (日文)
+#    - NotoSansTC-Regular.ttf (繁體中文)
+#
+# 6. FFmpeg：
+#    Mac: brew install ffmpeg
+#    Ubuntu: sudo apt-get install ffmpeg
+#    Windows: 下載並安裝 https://ffmpeg.org/download.html
+#
+# 7. 測試安裝：
+#    python test_slide_translation.py
+#    python test_smtp.py
+#
+# ==============================================================================
 
 # Flask Web Framework
 flask==3.0.0
-werkzeug
+werkzeug==3.1.3
+flask-cors==4.0.0
 
+# Queue and Email System
+python-dotenv==1.0.0
+
+# Additional Dependencies
 cached_path
 datasets
 x-transformers>=1.31.14
@@ -76,3 +164,6 @@ rjieba
 unidecode
 torchdiffeq
 tomli
+
+# Whisper for Speech-to-Text
+openai-whisper==20250625
