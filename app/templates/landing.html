@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deep Video Translation - AI 影片智能翻譯系統</title>
+    <title>DeepVidTranslate Service - AI影片深度翻譯服務
+</title>
     <style>
         * {
             margin: 0;
@@ -407,7 +408,7 @@
     <!-- 導航欄 -->
     <nav class="navbar">
         <div class="navbar-container">
-            <div class="logo">Deep Video Translation</div>
+            <div class="logo">DeepVidTranslate Service</div>
             <a href="/app" class="nav-button">進入系統</a>
         </div>
     </nav>
@@ -415,10 +416,9 @@
     <!-- Hero 區域 -->
     <section class="hero">
         <div class="hero-content">
-            <h1>AI 影片智能翻譯系統</h1>
+            <h1>AI 影片深度翻譯服務</h1>
             <p class="hero-subtitle">
-                結合語音辨識、機器翻譯與唇形同步技術，<br>
-                打造頂尖的影片本地化解決方案
+                整合影片翻譯、音色複製、嘴形同步與簡報翻譯的深度翻譯服務。
             </p>
             <div>
                 <a href="/app" class="cta-button">開始使用</a>
@@ -430,74 +430,39 @@
     <!-- 功能展示區 - 保留給前端開發者自定義 -->
     <section id="features" class="features-section">
         <div class="section-header">
-            <h2>核心功能</h2>
-            <p>強大的 AI 技術，簡單的操作流程</p>
+            <h2>主要功能</h2>
+            <p>功能介紹及操作說明</p>
         </div>
         <div class="features-grid">
             <div class="feature-card">
                 <div class="feature-icon">🎯</div>
-                <h3>智能語音辨識</h3>
-                <p>高精度語音轉文字技術，支援多語言辨識，準確捕捉影片中的每一句話。</p>
+                <h3>影片文本讀取並翻譯</h3>
+                <p>連結 LLM API，提供準確的語音辨識及翻譯功能</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon">🌐</div>
-                <h3>多語言翻譯</h3>
-                <p>支援多種語言互譯，採用先進的神經機器翻譯技術，確保翻譯品質。</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🎤</div>
-                <h3>語音合成</h3>
-                <p>自然流暢的 AI 語音生成，支援多種音色選擇，讓翻譯更有溫度。</p>
+                <div class="feature-icon">🎵</div>
+                <h3>音色複製與合成</h3>
+                <p>使用 F5-TTS 進行音色的複製與合成，讓翻譯後的語音更自然。<br>此語音識別模型約佔用 4GB 記憶體，規模約一億參數。</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">👄</div>
-                <h3>唇形同步</h3>
-                <p>智能唇形同步技術，讓翻譯後的影片更加自然逼真。</p>
+                <h3>翻譯後嘴形調整</h3>
+                <p>使用 Wav2Lip，讓影片中的嘴形可以符合翻譯後的語音。</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon">📊</div>
-                <h3>投影片辨識</h3>
-                <p>自動識別並翻譯影片中的投影片內容，完整保留簡報資訊。</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">⚡</div>
-                <h3>高效處理</h3>
-                <p>優化的處理流程，快速完成影片翻譯任務，節省寶貴時間。</p>
-            </div>
+                <div class="feature-icon">📄</div>
+                <h3>翻譯影片中的文字</h3>
+                <p>使用 EasyOCR 使用剪貼的方式達到簡報/文字翻譯的效果</p>
+            </div>           
         </div>
     </section>
 
-    <!-- 技術規格區 - 保留給前端開發者自定義 -->
-    <section class="tech-section">
-        <div class="section-header">
-            <h2>技術規格</h2>
-            <p>強大的技術支撐，可靠的系統性能</p>
-        </div>
-        <div class="tech-grid">
-            <div class="tech-item">
-                <div class="tech-label">處理速度</div>
-                <div class="tech-value">5x</div>
-            </div>
-            <div class="tech-item">
-                <div class="tech-label">支援語言</div>
-                <div class="tech-value">20+</div>
-            </div>
-            <div class="tech-item">
-                <div class="tech-label">辨識準確率</div>
-                <div class="tech-value">95%</div>
-            </div>
-            <div class="tech-item">
-                <div class="tech-label">同步精度</div>
-                <div class="tech-value">99%</div>
-            </div>
-        </div>
-    </section>
 
     <!-- 使用步驟區 - 保留給前端開發者自定義 -->
     <section class="steps-section">
         <div class="section-header">
             <h2>使用流程</h2>
-            <p>簡單三步驟，完成影片翻譯</p>
+            <p>簡單四步驟，完成影片翻譯</p>
         </div>
         <div class="steps-container">
             <div class="step">
@@ -510,36 +475,40 @@
             <div class="step">
                 <div class="step-number">02</div>
                 <div class="step-content">
-                    <h3>設定參數</h3>
-                    <p>選擇翻譯語言、語音模型等參數，客製化您的翻譯需求。</p>
+                    <h3>設定</h3>
+                    <p>輸入Email、選擇翻譯語言、是否簡報翻譯等</p>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">03</div>
                 <div class="step-content">
                     <h3>下載結果</h3>
-                    <p>處理完成後，即可下載翻譯好的影片及相關檔案。</p>
+                    <p>處理完成後，系統會寄送Email到您設定的信箱。</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">04</div>
+                <div class="step-content">
+                    <h3>填寫回饋書</h3>
+                    <p>收到深度翻譯的影片後，希望您能填一份表單，協助我進一步優化這個專案。</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- 前端開發者自定義區塊 -->
-    <div class="placeholder-section">
-        <h3>📝 此區域保留給前端開發者添加更多內容</h3>
-    </div>
 
     <!-- CTA 區域 -->
     <section class="cta-section">
         <h2>準備開始了嗎？</h2>
-        <p>立即體驗 AI 影片翻譯的強大功能</p>
+        <p>立即體驗 AI 影片深度翻譯服務</p>
         <a href="/app" class="cta-button">立即開始</a>
     </section>
 
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
-            <p>&copy; 2026 Deep Video Translation. All rights reserved.</p>
+            <p>&copy; 2026 DeepVidTranslate Service. All rights reserved.</p>
+            <p>科技始於人性，科技應用於生活</p>
         </div>
     </footer>
 

@@ -2400,20 +2400,35 @@ def process_video():
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
             return jsonify({'error': 'Email 格式不正確'}), 400
         
-        # 檢查 email 冷卻期
-        available, remaining = queue_manager.check_email_cooldown(email)
-        if not available:
-            hours = int(remaining // 3600)
-            minutes = int((remaining % 3600) // 60)
-            days = hours // 24
-            hours = hours % 24
-            
-            if days > 0:
-                cooldown_msg = f"此 Email 地址需等待 {days} 天 {hours} 小時後才能再次使用"
-            else:
-                cooldown_msg = f"此 Email 地址需等待 {hours} 小時 {minutes} 分鐘後才能再次使用"
-            
-            return jsonify({'error': cooldown_msg}), 429
+        # Email 白名單驗證
+        allowed_domain = 'tschool.tp.edu.tw'
+        special_allowed_email = 'rayc57429@gmail.com'
+        unlimited_email = '11230213@tschool.tp.edu.tw'
+        
+        # 檢查是否為允許的 email
+        email_domain = email.split('@')[1] if '@' in email else ''
+        
+        if email != special_allowed_email and email_domain != allowed_domain:
+            return jsonify({'error': f'僅限 @{allowed_domain} 或特定授權 Email 使用此服務'}), 403
+        
+        # 檢查 email 冷卻期（無限制白名單除外）
+        if email == unlimited_email:
+            # 無限制使用者，跳過冷卻期檢查
+            pass
+        else:
+            available, remaining = queue_manager.check_email_cooldown(email)
+            if not available:
+                hours = int(remaining // 3600)
+                minutes = int((remaining % 3600) // 60)
+                days = hours // 24
+                hours = hours % 24
+                
+                if days > 0:
+                    cooldown_msg = f"此 Email 地址需等待 {days} 天 {hours} 小時後才能再次使用"
+                else:
+                    cooldown_msg = f"此 Email 地址需等待 {hours} 小時 {minutes} 分鐘後才能再次使用"
+                
+                return jsonify({'error': cooldown_msg}), 429
         
         # 獲取參數
         api_key = request.form.get('api_key')
@@ -2422,8 +2437,6 @@ def process_video():
         enable_slide_translation = request.form.get('enable_slide_translation', 'true').lower() == 'true'
         min_segment_duration = float(request.form.get('min_segment_duration', 2))
         hash_threshold = int(request.form.get('hash_threshold', 5))
-        custom_output_filename = request.form.get('output_filename', '').strip()
-        output_directory = request.form.get('output_directory', 'audio_files').strip()
         
         # 新增：TTS 引擎和 API 提供者參數
         tts_engine = request.form.get('tts_engine', 'f5tts')
@@ -2455,36 +2468,12 @@ def process_video():
                 'error': f'影片時長 {duration_str} 超過限制（最多 1 分鐘）'
             }), 400
         
-        # 設置輸出路徑
-        base_name = os.path.splitext(filename)[0]
+        # 設置輸出路徑 - 強制使用 audio_files 目錄
+        output_directory = 'audio_files'
         
-        # 清理並驗證輸出目錄
-        if not output_directory:
-            output_directory = 'audio_files'
-        
-        # 標準化路徑分隔符
-        output_directory = output_directory.replace('\\', '/')
-        
-        # 檢查是否為絕對路徑
-        is_absolute = output_directory.startswith('/')
-        
-        # 移除危險的 .. 路徑遍歷
-        if not is_absolute:
-            output_directory = output_directory.replace('..', '').strip('/')
-            if not output_directory:
-                output_directory = 'audio_files'
-        else:
-            output_directory = output_directory.replace('..', '')
-        
-        # 使用自定義文件名或默認文件名
-        if custom_output_filename:
-            if not custom_output_filename.lower().endswith('.mp4'):
-                output_filename = f"{custom_output_filename}.mp4"
-            else:
-                output_filename = custom_output_filename
-            output_filename = secure_filename(output_filename)
-        else:
-            output_filename = f"{base_name}_translated.mp4"
+        # 從 Email 中提取 @ 符號前的字串作為文件名
+        email_username = email.split('@')[0]
+        output_filename = secure_filename(f"{email_username}.mp4")
         
         # 創建輸出目錄並設置完整路徑
         output_path = os.path.join(output_directory, output_filename)
@@ -2542,6 +2531,7 @@ def process_video():
             'queue_position': queue_position,
             'queue_stats': stats,
             'email': email,
+            'output_filename': output_filename,
             'video_duration': format_duration(video_duration) if video_duration else '未知'
         })
         
