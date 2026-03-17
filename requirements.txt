@@ -59,10 +59,7 @@ soundfile==0.13.1
 librosa==0.10.1
 
 # Text-to-Speech
-coqui-tts==0.24.2
-
-# Speech-to-Text
-openai-whisper==20250625
+# coqui-tts==0.24.2
 
 # Japanese Text Processing
 unidic-lite==1.0.8
@@ -167,3 +164,8 @@ tomli
 
 # Whisper for Speech-to-Text
 openai-whisper==20250625
+
+# Qwen3-TTS — replaces F5-TTS for voice cloning (supports 10 languages)
+qwen-tts
+
+ollama

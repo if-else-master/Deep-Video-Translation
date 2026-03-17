@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者後台 - DeepVidTranslate</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --black: #000;
+            --dark: #0f0f0f;
+            --g900: #1a1a1a;
+            --g800: #2d2d2d;
+            --g700: #404040;
+            --g600: #525252;
+            --g500: #6b6b6b;
+            --g400: #8a8a8a;
+            --g300: #a3a3a3;
+            --g200: #c4c4c4;
+            --g100: #e0e0e0;
+            --white: #fff;
+            --green: #4ade80;
+            --yellow: #facc15;
+            --blue: #60a5fa;
+            --red: #f87171;
+            --orange: #fb923c;
+        }
+        body {
+            font-family: 'Segoe UI','Microsoft JhengHei',-apple-system,sans-serif;
+            background: var(--black);
+            color: var(--g200);
+            min-height: 100vh;
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(26,26,26,.97);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--g800);
+            padding: 14px 28px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .nav-left { display: flex; align-items: center; gap: 12px; }
+        .nav-logo { font-weight: 700; color: var(--white); text-decoration: none; font-size: 1em; }
+        .nav-badge {
+            padding: 3px 10px; border-radius: 4px;
+            background: rgba(248,113,113,.15); color: var(--red);
+            border: 1px solid rgba(248,113,113,.3);
+            font-size: 0.75em; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+        }
+        .btn-nav {
+            padding: 8px 20px; background: var(--g800); color: var(--white);
+            border: 1px solid var(--g700); border-radius: 6px;
+            font-size: .88em; font-weight: 600; cursor: pointer;
+            text-decoration: none; transition: all .2s;
+        }
+        .btn-nav:hover { background: var(--g700); }
+
+        /* ── Layout ── */
+        .page { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+
+        /* ── Stats bar ── */
+        .stats-bar {
+            display: grid; grid-template-columns: repeat(5,1fr); gap: 10px;
+            margin-bottom: 32px;
+        }
+        .stat { background: var(--g900); border: 1px solid var(--g800); border-radius: 8px; padding: 14px; text-align: center; }
+        .stat-n { font-size: 1.9em; font-weight: 800; color: var(--white); line-height: 1; margin-bottom: 3px; }
+        .stat-l { font-size: .72em; color: var(--g500); text-transform: uppercase; letter-spacing: .8px; }
+
+        /* ── Section ── */
+        .section { margin-bottom: 40px; }
+        .section-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-bottom: 12px; margin-bottom: 14px;
+            border-bottom: 1px solid var(--g800);
+        }
+        .section-head h2 { font-size: .95em; font-weight: 700; color: var(--g200); text-transform: uppercase; letter-spacing: .8px; }
+        .section-head .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 8px 18px; border-radius: 6px; font-size: .88em;
+            font-weight: 600; cursor: pointer; border: none; transition: all .2s;
+        }
+        .btn-red { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+        .btn-red:hover { background: rgba(248,113,113,.28); }
+        .btn-orange { background: rgba(251,146,60,.15); color: var(--orange); border: 1px solid rgba(251,146,60,.3); }
+        .btn-orange:hover { background: rgba(251,146,60,.28); }
+        .btn-green { background: rgba(74,222,128,.12); color: var(--green); border: 1px solid rgba(74,222,128,.3); }
+        .btn-green:hover { background: rgba(74,222,128,.22); }
+        .btn-blue { background: rgba(96,165,250,.12); color: var(--blue); border: 1px solid rgba(96,165,250,.3); }
+        .btn-blue:hover { background: rgba(96,165,250,.22); }
+        .btn-ghost { background: var(--g800); color: var(--g200); border: 1px solid var(--g700); }
+        .btn-ghost:hover { background: var(--g700); }
+        .btn-sm { padding: 5px 12px; font-size: .8em; }
+        .btn-yellow { background: rgba(250,204,21,.15); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
+        .btn-yellow:hover { background: rgba(250,204,21,.28); }
+
+        /* ── Service Status Banner ── */
+        #serviceBanner {
+            display: none;
+            background: rgba(248,113,113,.12);
+            border: 1px solid rgba(248,113,113,.35);
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 24px;
+            color: var(--red);
+            font-weight: 600;
+            font-size: .9em;
+            text-align: center;
+            letter-spacing: .3px;
+        }
+        #serviceBanner.active { display: block; }
+
+        /* ── Pause toggle in navbar ── */
+        #btnPause {
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: .88em;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all .2s;
+            letter-spacing: .3px;
+        }
+        #btnPause.running {
+            background: rgba(74,222,128,.15); color: var(--green);
+            border: 1px solid rgba(74,222,128,.35);
+        }
+        #btnPause.running:hover { background: rgba(74,222,128,.28); }
+        #btnPause.paused {
+            background: rgba(248,113,113,.18); color: var(--red);
+            border: 1px solid rgba(248,113,113,.4);
+            animation: pulse .9s ease-in-out infinite alternate;
+        }
+        #btnPause.paused:hover { background: rgba(248,113,113,.32); }
+        @keyframes pulse { from { opacity: .85; } to { opacity: 1; } }
+
+        /* ── Table ── */
+        .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--g800); }
+        table { width: 100%; border-collapse: collapse; font-size: .85em; }
+        thead tr { background: var(--g900); }
+        th { padding: 11px 14px; text-align: left; color: var(--g400); font-size: .78em; text-transform: uppercase; letter-spacing: .7px; font-weight: 600; border-bottom: 1px solid var(--g800); }
+        td { padding: 11px 14px; border-bottom: 1px solid var(--g800); color: var(--g200); vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,.02); }
+        .highlight-row td { background: rgba(255,255,255,.04) !important; }
+
+        .status-pill {
+            display: inline-block; padding: 3px 9px; border-radius: 20px;
+            font-size: .75em; font-weight: 700; white-space: nowrap;
+        }
+        .s-processing { background: rgba(74,222,128,.12); color: var(--green); }
+        .s-queued { background: rgba(250,204,21,.10); color: var(--yellow); }
+        .s-completed { background: rgba(96,165,250,.12); color: var(--blue); }
+        .s-failed, .s-cancelled { background: rgba(248,113,113,.12); color: var(--red); }
+
+        .email-cell { font-family: monospace; font-size: .83em; color: var(--g300); }
+        .pos-cell { font-weight: 700; color: var(--yellow); text-align: center; min-width: 42px; }
+        .empty { text-align: center; padding: 28px; color: var(--g600); font-size: .88em; }
+
+        /* ── Input row ── */
+        .input-row {
+            display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+        }
+        .input-row input {
+            flex: 1; min-width: 200px;
+            padding: 9px 13px;
+            background: var(--g900); border: 1px solid var(--g700); color: var(--white);
+            border-radius: 6px; font-size: .9em;
+        }
+        .input-row input:focus { outline: none; border-color: var(--g500); }
+        .input-row input::placeholder { color: var(--g500); }
+        .input-row input[type="datetime-local"] {
+            flex: none; min-width: 220px;
+            padding: 9px 13px;
+            background: var(--g900); border: 1px solid var(--g700); color: var(--white);
+            border-radius: 6px; font-size: .9em; cursor: pointer;
+            color-scheme: dark;
+        }
+        .input-row input[type="datetime-local"]:focus { outline: none; border-color: var(--g500); }
+
+        /* ── Toast ── */
+        #toast {
+            position: fixed; bottom: 28px; right: 28px;
+            padding: 12px 22px; border-radius: 8px;
+            font-size: .9em; font-weight: 600;
+            background: var(--g900); border: 1px solid var(--g700); color: var(--white);
+            opacity: 0; pointer-events: none;
+            transition: opacity .25s; z-index: 9999;
+        }
+        #toast.show { opacity: 1; }
+        #toast.ok { border-color: rgba(74,222,128,.4); color: var(--green); }
+        #toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
+
+        /* ── Refresh bar ── */
+        .refresh-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: .8em; color: var(--g500); }
+        .rdot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.35} }
+
+        @media (max-width: 700px) {
+            .stats-bar { grid-template-columns: repeat(3,1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-left">
+        <a href="/" class="nav-logo">DeepVidTranslate</a>
+        <span class="nav-badge">管理者後台</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+        <button id="btnPause" class="running" onclick="toggleService()">● 服務中</button>
+        <a href="/" class="btn-nav">← 返回首頁</a>
+    </div>
+</nav>
+
+<div class="page">
+
+    <!-- Service paused banner -->
+    <div id="serviceBanner">⏸ 服務已暫停 — 目前不接受新的影片上傳。佇列中與處理中的任務將繼續完成。</div>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+        <div class="stat"><div class="stat-n" id="sProcessing">—</div><div class="stat-l">翻譯中</div></div>
+        <div class="stat"><div class="stat-n" id="sQueued">—</div><div class="stat-l">排隊中</div></div>
+        <div class="stat"><div class="stat-n" id="sCompleted">—</div><div class="stat-l">已完成</div></div>
+        <div class="stat"><div class="stat-n" id="sFailed">—</div><div class="stat-l">失敗</div></div>
+        <div class="stat"><div class="stat-n" id="sTotal">—</div><div class="stat-l">總計</div></div>
+    </div>
+
+    <div class="refresh-bar">
+        <div class="rdot"></div>
+        <span>即時更新，每 10 秒自動刷新</span>
+    </div>
+
+    <!-- Active tasks -->
+    <div class="section">
+        <div class="section-head">
+            <h2>排隊中 / 翻譯中任務</h2>
+            <div class="actions">
+                <button class="btn btn-orange" onclick="cancelAll(false)">取消所有排隊</button>
+                <button class="btn btn-red" onclick="cancelAll(true)">取消全部（含翻譯中）</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>位置</th>
+                        <th>狀態</th>
+                        <th>Email</th>
+                        <th>影片檔名</th>
+                        <th>提交時間</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="activeBody">
+                    <tr><td class="empty" colspan="6">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- History -->
+    <div class="section">
+        <div class="section-head">
+            <h2>近期歷史記錄（最近 100 筆）</h2>
+            <div class="actions">
+                <button class="btn btn-red" onclick="clearHistory()">清除全部歷史記錄</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>狀態</th>
+                        <th>Email</th>
+                        <th>影片檔名</th>
+                        <th>提交時間</th>
+                        <th>完成時間</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td class="empty" colspan="5">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Whitelist -->
+    <div class="section">
+        <div class="section-head">
+            <h2>白名單管理（免冷卻、免限制）</h2>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Email</th><th>備註</th><th>加入時間</th><th>操作</th></tr>
+                </thead>
+                <tbody id="whitelistBody">
+                    <tr><td class="empty" colspan="4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="input-row">
+            <input id="wlEmail" placeholder="輸入 Email 加入白名單" type="email">
+            <input id="wlNote" placeholder="備註（選填）">
+            <button class="btn btn-green" onclick="addWhitelist()">加入白名單</button>
+        </div>
+    </div>
+
+    <!-- Blacklist -->
+    <div class="section">
+        <div class="section-head">
+            <h2>黑名單管理（永久封鎖提交）</h2>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Email</th><th>原因</th><th>加入時間</th><th>操作</th></tr>
+                </thead>
+                <tbody id="blacklistBody">
+                    <tr><td class="empty" colspan="4">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="input-row">
+            <input id="blEmail" placeholder="輸入 Email 加入黑名單" type="email">
+            <input id="blReason" placeholder="封鎖原因（選填）">
+            <button class="btn btn-red" onclick="addBlacklist()">加入黑名單</button>
+        </div>
+    </div>
+
+    <!-- Service Deadline -->
+    <div class="section">
+        <div class="section-head">
+            <h2>服務截止日期設定</h2>
+        </div>
+        <div id="deadlineStatus" style="margin-bottom:16px; padding:14px 18px; background:var(--g900); border-radius:8px; border:1px solid var(--g800); font-size:.88em;">載入中...</div>
+        <div class="input-row" style="align-items:flex-end;">
+            <div>
+                <label style="display:block;font-size:.78em;color:var(--g500);margin-bottom:6px;text-transform:uppercase;letter-spacing:.8px;">截止日期與時間</label>
+                <input type="datetime-local" id="deadlineInput">
+            </div>
+            <button class="btn btn-yellow" onclick="setDeadline()">設定截止日期</button>
+            <button class="btn btn-ghost" onclick="clearDeadline()">清除（不限時間）</button>
+        </div>
+    </div>
+
+    <!-- Cooldowns -->
+    <div class="section">
+        <div class="section-head">
+            <h2>冷卻中帳號（5 小時冷卻）</h2>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Email</th><th>最後提交時間</th><th>冷卻到期時間</th><th>剩餘時間</th><th>操作</th></tr>
+                </thead>
+                <tbody id="cooldownBody">
+                    <tr><td class="empty" colspan="5">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── API helpers ────────────────────────────────────────────────────────────
+// 身份驗證由 session cookie 處理，瀏覽器自動附帶
+async function api(url, method = 'GET', body = null) {
+    const opts = { method, credentials: 'same-origin' };
+    if (body) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(url, opts);
+    if (res.status === 403) {
+        toast('Session 已過期，請重新登入', false);
+        setTimeout(() => { window.location.href = '/'; }, 1500);
+        return {};
+    }
+    return res.json();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, ok = true) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + (ok ? 'ok' : 'err');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = ''; }, 3000);
+}
+
+// ── Format helpers ─────────────────────────────────────────────────────────
+function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso.replace(' ', 'T'));
+    return d.toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false });
+}
+function statusPill(s) {
+    const cls = { processing: 's-processing', queued: 's-queued', completed: 's-completed', failed: 's-failed', cancelled: 's-cancelled' };
+    const label = { processing: '翻譯中', queued: '等待中', completed: '已完成', failed: '失敗', cancelled: '已取消' };
+    return `<span class="status-pill ${cls[s]||''}">${label[s]||s}</span>`;
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Render tasks ───────────────────────────────────────────────────────────
+function renderActive(tasks) {
+    const active = tasks.filter(t => t.status === 'queued' || t.status === 'processing');
+    active.sort((a, b) => {
+        if (a.status === 'processing') return -1;
+        if (b.status === 'processing') return 1;
+        return a.queue_position - b.queue_position;
+    });
+    const tbody = document.getElementById('activeBody');
+    if (!active.length) {
+        tbody.innerHTML = '<tr><td class="empty" colspan="6">目前沒有活躍任務</td></tr>';
+        return;
+    }
+    tbody.innerHTML = active.map(t => `
+        <tr>
+            <td class="pos-cell">${t.status === 'processing' ? '▶' : '#' + t.queue_position}</td>
+            <td>${statusPill(t.status)}</td>
+            <td class="email-cell">${esc(t.email)}</td>
+            <td>${esc(t.video_filename)}</td>
+            <td>${fmtTime(t.created_at)}</td>
+            <td>
+                <button class="btn btn-sm btn-red" onclick="cancelTask('${esc(t.task_id)}', this)">取消</button>
+                <button class="btn btn-sm btn-orange" style="margin-left:4px" onclick="addBlacklistFromTask('${esc(t.email)}')">封鎖此人</button>
+            </td>
+        </tr>`).join('');
+}
+
+function renderHistory(tasks) {
+    const done = tasks.filter(t => !['queued','processing'].includes(t.status));
+    done.sort((a, b) => (b.completed_at||'') > (a.completed_at||'') ? 1 : -1);
+    const tbody = document.getElementById('historyBody');
+    if (!done.length) {
+        tbody.innerHTML = '<tr><td class="empty" colspan="5">尚無記錄</td></tr>';
+        return;
+    }
+    tbody.innerHTML = done.map(t => `
+        <tr>
+            <td>${statusPill(t.status)}</td>
+            <td class="email-cell">${esc(t.email)}</td>
+            <td>${esc(t.video_filename)}</td>
+            <td>${fmtTime(t.created_at)}</td>
+            <td>${fmtTime(t.completed_at)}</td>
+        </tr>`).join('');
+}
+
+function renderWhitelist(list) {
+    const tbody = document.getElementById('whitelistBody');
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td class="empty" colspan="4">白名單為空</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(r => `
+        <tr>
+            <td class="email-cell">${esc(r.email)}</td>
+            <td>${esc(r.note||'')}</td>
+            <td>${fmtTime(r.added_at)}</td>
+            <td><button class="btn btn-sm btn-ghost" onclick="removeWhitelist('${esc(r.email)}')">移除</button></td>
+        </tr>`).join('');
+}
+
+function renderBlacklist(list) {
+    const tbody = document.getElementById('blacklistBody');
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td class="empty" colspan="4">黑名單為空</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(r => `
+        <tr>
+            <td class="email-cell">${esc(r.email)}</td>
+            <td>${esc(r.reason||'')}</td>
+            <td>${fmtTime(r.added_at)}</td>
+            <td><button class="btn btn-sm btn-ghost" onclick="removeBlacklist('${esc(r.email)}')">移除</button></td>
+        </tr>`).join('');
+}
+
+// ── Fetch & render ─────────────────────────────────────────────────────────
+async function refresh() {
+    const data = await api('/admin/api/tasks');
+    if (data.error) { toast('載入失敗: ' + data.error, false); return; }
+    document.getElementById('sProcessing').textContent = data.stats.processing ?? '—';
+    document.getElementById('sQueued').textContent     = data.stats.queued ?? '—';
+    document.getElementById('sCompleted').textContent  = data.stats.completed ?? '—';
+    document.getElementById('sFailed').textContent     = data.stats.failed ?? '—';
+    document.getElementById('sTotal').textContent      = data.stats.total ?? '—';
+    renderActive(data.tasks);
+    renderHistory(data.tasks);
+    renderWhitelist(data.whitelist || []);
+    renderBlacklist(data.blacklist || []);
+    renderCooldowns(data.cooldowns || []);
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+async function cancelTask(taskId, btn) {
+    if (!confirm('確定要取消此任務？')) return;
+    btn.disabled = true;
+    const r = await api(`/admin/api/cancel/${taskId}`, 'POST');
+    toast(r.message || '完成', r.success);
+    if (r.success) refresh();
+    else btn.disabled = false;
+}
+
+async function cancelAll(includeProcessing) {
+    const msg = includeProcessing
+        ? '確定要取消【所有排隊中 + 翻譯中】的任務？此操作不可復原！'
+        : '確定要取消【所有排隊中】的任務？翻譯中的任務不受影響。';
+    if (!confirm(msg)) return;
+    const r = await api('/admin/api/cancel_all', 'POST', { include_processing: includeProcessing });
+    toast(r.message || '完成', r.success);
+    if (r.success) refresh();
+}
+
+async function addWhitelist() {
+    const email = document.getElementById('wlEmail').value.trim();
+    const note  = document.getElementById('wlNote').value.trim();
+    if (!email) { toast('請輸入 Email', false); return; }
+    const r = await api('/admin/api/whitelist/add', 'POST', { email, note });
+    toast(r.message, r.success);
+    if (r.success) { document.getElementById('wlEmail').value=''; document.getElementById('wlNote').value=''; refresh(); }
+}
+
+async function removeWhitelist(email) {
+    const r = await api('/admin/api/whitelist/remove', 'POST', { email });
+    toast(r.message, r.success);
+    if (r.success) refresh();
+}
+
+async function addBlacklist() {
+    const email  = document.getElementById('blEmail').value.trim();
+    const reason = document.getElementById('blReason').value.trim();
+    if (!email) { toast('請輸入 Email', false); return; }
+    const r = await api('/admin/api/blacklist/add', 'POST', { email, reason });
+    toast(r.message, r.success);
+    if (r.success) { document.getElementById('blEmail').value=''; document.getElementById('blReason').value=''; refresh(); }
+}
+
+async function addBlacklistFromTask(email) {
+    if (!confirm(`確定要封鎖 ${email}？\n此帳號將無法再次提交任務。`)) return;
+    const r = await api('/admin/api/blacklist/add', 'POST', { email, reason: '管理者從任務列表封鎖' });
+    toast(r.message, r.success);
+    if (r.success) refresh();
+}
+
+async function removeBlacklist(email) {
+    const r = await api('/admin/api/blacklist/remove', 'POST', { email });
+    toast(r.message, r.success);
+    if (r.success) refresh();
+}
+
+async function clearHistory() {
+    if (!confirm('確定要清除所有歷史記錄（已完成、失敗、已取消）？\n此操作不可復原！')) return;
+    const r = await api('/admin/api/clear_history', 'POST');
+    toast(r.message || '完成', r.success);
+    if (r.success) refresh();
+}
+
+// ── Deadline management ────────────────────────────────────────────────────
+async function fetchDeadline() {
+    try {
+        const r = await api('/admin/api/deadline');
+        updateDeadlineUI(r);
+    } catch(e) {}
+}
+
+function updateDeadlineUI(data) {
+    const el  = document.getElementById('deadlineStatus');
+    const inp = document.getElementById('deadlineInput');
+    if (!data || !data.deadline) {
+        el.innerHTML = '<span style="color:var(--g500)">未設定截止日期 — 服務無限期開放</span>';
+        if (inp) inp.value = '';
+        return;
+    }
+    const dt = data.deadline.replace(' ', 'T').substring(0, 16);
+    if (inp) inp.value = dt;
+    if (data.expired) {
+        el.innerHTML = `<span style="color:var(--red)">⏹ <strong>服務已結束</strong> — 截止時間：${esc(data.deadline)}</span>`;
+    } else {
+        el.innerHTML = `<span style="color:var(--green)">● <strong>服務進行中</strong> — 截止時間：${esc(data.deadline)}</span>`;
+    }
+}
+
+async function setDeadline() {
+    const val = document.getElementById('deadlineInput').value;
+    if (!val) { toast('請選擇日期與時間', false); return; }
+    const deadline = val.replace('T', ' ') + ':00';
+    const r = await api('/admin/api/deadline', 'POST', { deadline });
+    toast(r.message || '完成', r.success !== false);
+    if (r.success) fetchDeadline();
+}
+
+async function clearDeadline() {
+    if (!confirm('確定要清除截止日期，讓服務無限期開放？')) return;
+    const r = await api('/admin/api/deadline', 'POST', { deadline: '' });
+    toast(r.message || '完成', r.success !== false);
+    if (r.success) fetchDeadline();
+}
+
+function renderCooldowns(list) {
+    const tbody = document.getElementById('cooldownBody');
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td class="empty" colspan="5">目前沒有帳號在冷卻中</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map(r => `
+        <tr>
+            <td class="email-cell">${esc(r.email)}</td>
+            <td>${fmtTime(r.last_used)}</td>
+            <td>${fmtTime(r.cooldown_end)}</td>
+            <td><span style="color:var(--yellow);font-weight:700">${esc(r.remaining_display)}</span></td>
+            <td><button class="btn btn-sm btn-orange" onclick="removeCooldown('${esc(r.email)}')">取消冷卻</button></td>
+        </tr>`).join('');
+}
+
+async function removeCooldown(email) {
+    if (!confirm(`確定要取消 ${email} 的冷卻限制？\n取消後該帳號可立即提交新任務。`)) return;
+    const r = await api('/admin/api/cooldown/remove', 'POST', { email });
+    toast(r.message, r.success);
+    if (r.success) refresh();
+}
+
+// ── Service toggle ────────────────────────────────────────────────────────
+async function toggleService() {
+    const btn = document.getElementById('btnPause');
+    const isPaused = btn.classList.contains('paused');
+    const confirmMsg = isPaused
+        ? '確定要恢復服務，開始接受新任務？'
+        : '確定要暫停服務？\n已在佇列中或翻譯中的任務將繼續完成，但不再接受新上傳。';
+    if (!confirm(confirmMsg)) return;
+    const r = await api('/admin/api/service/toggle', 'POST');
+    if (r.success) {
+        toast(r.message, true);
+        updateServiceUI(r.paused);
+    } else {
+        toast(r.error || '操作失敗', false);
+    }
+}
+
+function updateServiceUI(paused) {
+    const btn = document.getElementById('btnPause');
+    const banner = document.getElementById('serviceBanner');
+    if (paused) {
+        btn.className = 'paused';
+        btn.textContent = '⏸ 已暫停';
+        banner.classList.add('active');
+    } else {
+        btn.className = 'running';
+        btn.textContent = '● 服務中';
+        banner.classList.remove('active');
+    }
+}
+
+async function fetchServiceStatus() {
+    try {
+        const r = await fetch('/service/status');
+        const d = await r.json();
+        updateServiceUI(d.paused);
+    } catch(e) {}
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+fetchServiceStatus();
+fetchDeadline();
+refresh();
+setInterval(refresh, 10000);
+setInterval(fetchServiceStatus, 10000);
+</script>
+</body>
+</html>

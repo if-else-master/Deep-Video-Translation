@@ -88,3 +88,5 @@ dump.rdb
 *.pt
 *.ckpt
 *.safetensors
+
+.Ds_Store/

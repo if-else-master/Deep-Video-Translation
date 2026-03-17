@@ -147,12 +147,15 @@ class VideoProcessor:
         headers = {"Content-Type": "application/json"}
         
         lang_prompts = {
-            "Japanese": "請將以下文字翻譯成日文，只輸出翻譯結果，不要有任何解釋或額外文字：",
             "English": "請將以下文字翻譯成英文，只輸出翻譯結果，不要有任何解釋或額外文字：",
-            "Chinese": "請將以下文字翻譯成中文，只輸出翻譯結果，不要有任何解釋或額外文字："
+            "Chinese": "請將以下文字翻譯成中文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "German": "請將以下文字翻譯成德文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "French": "請將以下文字翻譯成法文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "Hindi": "請將以下文字翻譯成印地文，只輸出翻譯結果，不要有任何解釋或額外文字：",
+            "Korean": "請將以下文字翻譯成韓文，只輸出翻譯結果，不要有任何解釋或額外文字："
         }
         
-        prompt = lang_prompts.get(target_lang, lang_prompts["Japanese"]) + text
+        prompt = lang_prompts.get(target_lang, lang_prompts["English"]) + text
         payload = {
             "contents": [{"parts": [{"text": prompt}]}]
         }

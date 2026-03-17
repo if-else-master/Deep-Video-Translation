@@ -387,6 +387,127 @@
             }
         }
 
+        /* ── Flip Clock Countdown ── */
+        .countdown-wrap {
+            margin: 30px 0 8px;
+            text-align: center;
+        }
+        .countdown-title {
+            font-size: 0.78em;
+            color: var(--color-gray-600);
+            text-transform: uppercase;
+            letter-spacing: 2.5px;
+            margin-bottom: 20px;
+        }
+        .flip-clock {
+            display: inline-flex;
+            gap: 0;
+            align-items: flex-start;
+        }
+        .flip-unit-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .flip-digits {
+            display: flex;
+            gap: 4px;
+        }
+        .flip-unit-label {
+            font-size: 0.68em;
+            color: var(--color-gray-600);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
+        }
+        .flip-sep {
+            font-size: 2em;
+            color: var(--color-gray-800);
+            font-weight: 900;
+            padding: 0 8px;
+            line-height: 68px;
+            font-family: 'Courier New', monospace;
+            margin-top: -4px;
+        }
+
+        /* Single digit card */
+        .fc-digit {
+            width: 50px;
+            height: 72px;
+            perspective: 300px;
+        }
+        .fc-card {
+            width: 100%;
+            height: 100%;
+            background: #141414;
+            border: 1px solid #2a2a2a;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transform-origin: center center;
+        }
+        /* Retro centre divider line */
+        .fc-card::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; top: 50%;
+            height: 1px;
+            background: #090909;
+            pointer-events: none;
+        }
+        /* Subtle top-half highlight */
+        .fc-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 50%;
+            background: rgba(255,255,255,0.03);
+            border-radius: 5px 5px 0 0;
+            pointer-events: none;
+        }
+        .fc-card span {
+            font-family: 'Courier New','Consolas',monospace;
+            font-size: 2.1em;
+            font-weight: 800;
+            color: #e8e8e8;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+            position: relative;
+            z-index: 1;
+        }
+        .fc-card.fold-out {
+            animation: fcFoldOut 0.15s ease-in forwards;
+        }
+        .fc-card.fold-in {
+            animation: fcFoldIn 0.15s ease-out forwards;
+        }
+        @keyframes fcFoldOut {
+            from { transform: rotateX(0deg); }
+            to   { transform: rotateX(-90deg); }
+        }
+        @keyframes fcFoldIn {
+            from { transform: rotateX(90deg); }
+            to   { transform: rotateX(0deg); }
+        }
+
+        .flip-expired-msg {
+            color: #f87171;
+            font-size: 1.05em;
+            font-weight: 700;
+            letter-spacing: 2px;
+            padding: 18px 30px;
+            border: 1px solid rgba(248,113,113,.3);
+            border-radius: 8px;
+            background: rgba(248,113,113,.07);
+            display: inline-block;
+        }
+        .flip-no-deadline {
+            color: var(--color-gray-600);
+            font-size: 0.85em;
+            letter-spacing: 1px;
+        }
+
         /* 佔位符區域 - 供前端開發者添加內容 */
         .placeholder-section {
             padding: 80px 40px;
@@ -409,7 +530,10 @@
     <nav class="navbar">
         <div class="navbar-container">
             <div class="logo">DeepVidTranslate Service</div>
-            <a href="/app" class="nav-button">進入系統</a>
+            <div style="display:flex;gap:12px;align-items:center;">
+                <a href="/queue" class="nav-button" style="background:transparent;color:var(--color-gray-300);border:1px solid var(--color-gray-700);padding:10px 22px;">📋 排隊狀態</a>
+                <a href="/app" class="nav-button">進入系統</a>
+            </div>
         </div>
     </nav>
 
@@ -420,8 +544,50 @@
             <p class="hero-subtitle">
                 整合影片翻譯、音色複製、嘴形同步與簡報翻譯的深度翻譯服務。
             </p>
+            <p class="hero-subtitle">體驗期限從2026/03/02～2026/03/06 星期五</p>
+            <!-- Retro Flip-Clock Countdown -->
+            <div class="countdown-wrap" id="countdownWrap">
+                <div class="countdown-title">服務體驗倒數計時</div>
+                <div id="clockDisplay">
+                    <!-- Days -->
+                    <div class="flip-clock" id="flipClock">
+                        <div class="flip-unit-group">
+                            <div class="flip-digits">
+                                <div class="fc-digit" id="d0"><div class="fc-card"><span>0</span></div></div>
+                                <div class="fc-digit" id="d1"><div class="fc-card"><span>0</span></div></div>
+                            </div>
+                            <div class="flip-unit-label">天</div>
+                        </div>
+                        <div class="flip-sep">:</div>
+                        <div class="flip-unit-group">
+                            <div class="flip-digits">
+                                <div class="fc-digit" id="h0"><div class="fc-card"><span>0</span></div></div>
+                                <div class="fc-digit" id="h1"><div class="fc-card"><span>0</span></div></div>
+                            </div>
+                            <div class="flip-unit-label">時</div>
+                        </div>
+                        <div class="flip-sep">:</div>
+                        <div class="flip-unit-group">
+                            <div class="flip-digits">
+                                <div class="fc-digit" id="m0"><div class="fc-card"><span>0</span></div></div>
+                                <div class="fc-digit" id="m1"><div class="fc-card"><span>0</span></div></div>
+                            </div>
+                            <div class="flip-unit-label">分</div>
+                        </div>
+                        <div class="flip-sep">:</div>
+                        <div class="flip-unit-group">
+                            <div class="flip-digits">
+                                <div class="fc-digit" id="s0"><div class="fc-card"><span>0</span></div></div>
+                                <div class="fc-digit" id="s1"><div class="fc-card"><span>0</span></div></div>
+                            </div>
+                            <div class="flip-unit-label">秒</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div>
                 <a href="/app" class="cta-button">開始使用</a>
+                <a href="/queue" class="cta-button secondary">查看排隊狀態</a>
                 <a href="#features" class="cta-button secondary">了解更多</a>
             </div>
         </div>
@@ -442,7 +608,7 @@
             <div class="feature-card">
                 <div class="feature-icon">🎵</div>
                 <h3>音色複製與合成</h3>
-                <p>使用 F5-TTS 進行音色的複製與合成，讓翻譯後的語音更自然。<br>此語音識別模型約佔用 4GB 記憶體，規模約一億參數。</p>
+                <p>使用 Qwen3-TTS 進行音色的複製與合成，讓翻譯後的語音更自然。<br>此語音識別模型約佔用 4GB 記憶體，規模約一億參數。</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">👄</div>
@@ -457,6 +623,33 @@
         </div>
     </section>
 
+    <section id="features" class="features-section">
+        <div class="section-header">
+            <h2>主要受眾</h2>          
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🧑‍🏫</div>
+                <h3>老師</h3>
+                <p>連結 LLM API，提供準確的語音辨識及翻譯功能</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">✍️</div>
+                <h3>影音創作者</h3>
+                <p>使用 F5-TTS 進行音色的複製與合成，讓翻譯後的語音更自然。<br>此語音識別模型約佔用 4GB 記憶體，規模約一億參數。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📑</div>
+                <h3>線上學習者/學習平台</h3>
+                <p>使用 Wav2Lip，讓影片中的嘴形可以符合翻譯後的語音。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📺</div>
+                <h3>新聞媒體</h3>
+                <p>使用 EasyOCR 使用剪貼的方式達到簡報/文字翻譯的效果</p>
+            </div>           
+        </div>
+    </section>
 
     <!-- 使用步驟區 - 保留給前端開發者自定義 -->
     <section class="steps-section">
@@ -513,19 +706,102 @@
     </footer>
 
     <script>
-        // 平滑滾動
+        // ── Smooth scroll ──────────────────────────────────────────────────
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                }
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
             });
         });
+
+        // ── Flip Clock Engine ──────────────────────────────────────────────
+        const PAD2 = n => String(n).padStart(2, '0');
+
+        // Map unit-id → which two digit-card ids drive it
+        const UNITS = [
+            { label: 'days',  ids: ['d0','d1'] },
+            { label: 'hours', ids: ['h0','h1'] },
+            { label: 'mins',  ids: ['m0','m1'] },
+            { label: 'secs',  ids: ['s0','s1'] },
+        ];
+
+        // last rendered values
+        const lastVal = { d0:'', d1:'', h0:'', h1:'', m0:'', m1:'', s0:'', s1:'' };
+
+        function flipDigit(id, newChar) {
+            if (lastVal[id] === newChar) return;
+            lastVal[id] = newChar;
+            const digit = document.getElementById(id);
+            if (!digit) return;
+            const panel = digit.querySelector('.fc-card');
+
+            // Phase 1: fold card away (0 → -90deg, 150ms)
+            panel.classList.remove('fold-in');
+            panel.classList.add('fold-out');
+
+            // Phase 2: swap number, fold back in (90deg → 0, 150ms)
+            setTimeout(() => {
+                panel.querySelector('span').textContent = newChar;
+                panel.classList.remove('fold-out');
+                panel.classList.add('fold-in');
+                setTimeout(() => panel.classList.remove('fold-in'), 150);
+            }, 150);
+        }
+
+        function renderCountdown(totalSec) {
+            if (totalSec <= 0) {
+                document.getElementById('clockDisplay').innerHTML =
+                    '<div class="flip-expired-msg">⏹ 服務體驗期已結束，感謝您的參與</div>';
+                return;
+            }
+            const days  = Math.floor(totalSec / 86400);
+            const hours = Math.floor((totalSec % 86400) / 3600);
+            const mins  = Math.floor((totalSec % 3600) / 60);
+            const secs  = totalSec % 60;
+
+            const ds = PAD2(days);
+            const hs = PAD2(hours);
+            const ms = PAD2(mins);
+            const ss = PAD2(secs);
+
+            flipDigit('d0', ds[0]); flipDigit('d1', ds[1]);
+            flipDigit('h0', hs[0]); flipDigit('h1', hs[1]);
+            flipDigit('m0', ms[0]); flipDigit('m1', ms[1]);
+            flipDigit('s0', ss[0]); flipDigit('s1', ss[1]);
+        }
+
+        let deadlineMs = null;
+        let clockInterval = null;
+
+        function startClock() {
+            if (deadlineMs === null) return;
+            function tick() {
+                const rem = Math.max(0, Math.floor((deadlineMs - Date.now()) / 1000));
+                renderCountdown(rem);
+            }
+            tick();
+            clockInterval = setInterval(tick, 1000);
+        }
+
+        async function initClock() {
+            try {
+                const r = await fetch('/service/deadline');
+                const d = await r.json();
+                if (!d.deadline) {
+                    document.getElementById('clockDisplay').innerHTML =
+                        '<div class="flip-no-deadline">服務體驗期限尚未公告</div>';
+                    return;
+                }
+                deadlineMs = new Date(d.deadline.replace(' ', 'T')).getTime();
+                startClock();
+            } catch(e) {
+                document.getElementById('clockDisplay').innerHTML =
+                    '<div class="flip-no-deadline">—</div>';
+            }
+        }
+
+        initClock();
     </script>
 </body>
 </html>

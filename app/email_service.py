@@ -177,10 +177,23 @@ class EmailService:
                 """
             
             html_body += """
+                        <div style="background-color:#1a1a1a; border:2px solid #ffffff; border-radius:8px; padding:28px; margin:28px 0; text-align:center;">
+                            <div style="font-size:32px; margin-bottom:12px;">📝</div>
+                            <h2 style="color:#ffffff; margin:0 0 10px 0; font-size:18px; font-weight:700;">使用體驗回饋</h2>
+                            <p style="color:#a3a3a3; margin:0 0 22px 0; line-height:1.6; font-size:14px;">
+                                您的反饋對我們非常重要！<br>
+                                請花 1 分鐘填寫使用體驗問卷，幫助我們持續改善服務品質。
+                            </p>
+                            <a href="https://docs.google.com/forms/d/e/1FAIpQLScHhcZU-Leqyf218TaRRw-xhIotjMNAmB1_3Wqw1IT5exMVEA/viewform?usp=header"
+                               style="display:inline-block; background-color:#ffffff; color:#000000; padding:14px 32px; text-decoration:none; border-radius:6px; font-weight:700; font-size:15px; letter-spacing:0.3px;">
+                                填寫使用體驗問卷 →
+                            </a>
+                        </div>
+
                         <div class="message">
                             <p><strong>注意事項：</strong></p>
                             <ul style="color: #a3a3a3; line-height: 1.8;">
-                                <li>此 Email 地址 5 天內無法再次使用服務</li>
+                                <li>此 Email 地址 5 小時內無法再次使用服務</li>
                                 <li>如有任何問題，請聯繫技術支援</li>
                             </ul>
                         </div>
@@ -204,8 +217,14 @@ Deep Video Translation - 影片翻譯完成通知
 
 {'下載連結：' + download_url if download_url else ''}
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 使用體驗回饋
+請花 1 分鐘填寫問卷，幫助我們持續改善服務：
+https://docs.google.com/forms/d/e/1FAIpQLScHhcZU-Leqyf218TaRRw-xhIotjMNAmB1_3Wqw1IT5exMVEA/viewform?usp=header
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 注意事項：
-- 此 Email 地址 5 天內無法再次使用服務
+- 此 Email 地址 5 小時內無法再次使用服務
 - 如有任何問題，請聯繫技術支援
 
 © 2026 Deep Video Translation. All rights reserved.
