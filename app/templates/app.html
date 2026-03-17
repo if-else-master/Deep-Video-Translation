@@ -525,67 +525,34 @@
     </style>
 </head>
 <body>
+    <!-- 服務暫停公告橫幅 -->
+    <div id="pauseBanner" style="display:none; background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.4); border-radius:8px; padding:14px 20px; margin-bottom:18px; color:#f87171; font-weight:600; text-align:center; font-size:.95em;">
+        ⏸ 服務目前暫停接受新任務，請稍後再試。
+    </div>
+
     <div class="container">
         <div class="header">
             <a href="/" class="btn-back">← 返回首頁</a>
             <h1>AI 深度影片翻譯服務</h1>
-            <p>支援 4 種語言：日文 • 英文 • 中文 • 德文</p>            
+            <p>支援語音翻譯與投影片文字翻譯，語言自動同步</p>            
         </div>
 
         <div class="content">
             <form id="translationForm">
-                <!-- API 提供者選擇 -->
-                <div class="form-group">
-                    <label for="apiProvider">翻譯 API 提供者</label>
-                    <select id="apiProvider" name="api_provider" required>
-                        <option value="gemini" selected>Google Gemini</option>
-                        <option value="openai">OpenAI (GPT-4o-mini)</option>
-                        <option value="claude">Anthropic Claude (Haiku)</option>
-                        <option value="local_llm">本地 LLM (Ollama/LM Studio)</option>
-                    </select>
-                </div>
-
-                <!-- API Key -->
-                <div class="form-group" id="apiKeyGroup">
-                    <label for="apiKey" id="apiKeyLabel">Gemini API Key</label>
-                    <input type="password" id="apiKey" name="api_key" placeholder="輸入您的 API Key" required>
-                </div>
-
-                <!-- 本地 LLM 配置 -->
-                <div class="form-group" id="localLlmConfig" style="display: none;">
-                    <label>本地 LLM 配置</label>
-                    <div style="background: var(--color-gray-800); padding: 15px; border-radius: 6px; border: 1px solid var(--color-gray-700);">
-                        <div style="margin-bottom: 10px;">
-                            <label for="localLlmUrl" style="font-size: 0.9em; color: var(--color-gray-300);">API 端點 URL</label>
-                            <input type="text" id="localLlmUrl" name="local_llm_url" value="http://localhost:11434/api/generate" placeholder="Ollama: http://localhost:11434/api/generate" style="width: 100%; padding: 10px; font-family: monospace;">
-                        </div>
-                        <div>
-                            <label for="localLlmModel" style="font-size: 0.9em; color: var(--color-gray-300);">模型名稱</label>
-                            <input type="text" id="localLlmModel" name="local_llm_model" value="llama3.2" placeholder="例如: llama3.2, qwen2.5, mistral">
-                        </div>
-                        <div class="info-box" style="margin-top: 10px;">
-                            <strong>💡 提示：</strong>
-                            <ul style="margin: 5px 0 0 15px; line-height: 1.6;">
-                                <li>Ollama 默認端口: 11434</li>
-                                <li>LM Studio 默認端口: 1234</li>
-                                <li>請確保本地服務已啟動</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Email 輸入 -->
                 <div class="form-group">
                     <label for="userEmail">Email 填寫</label>
-                    <input type="email" id="userEmail" name="email" placeholder="your@email.com" required>
+                    <input type="email" id="userEmail" name="email" placeholder="your@tschool.tp.edu.tw" required>
                     <div class="info-box" style="margin-top: 10px;">
                         <strong>⚠️ 重要說明：</strong>
                         <ul style="margin: 5px 0 0 15px; line-height: 1.8;">
                             <li>影片處理完成後，將發送到此 Email</li>
+                            <li>檔案名稱請使用：英文.mp4（請勿使用中文檔名）</li>
                             <li>目前只開放@tschool.tp.edu.tw 的 Email 使用</li>
-                            <li>每個 Email 地址 <strong>5 天</strong>內僅可使用一次</li>
-                            <li>僅支援 <strong>1 分鐘</strong>以內的影片</li>
+                            <li>每個 Email 地址 <strong>5 小時</strong>內僅可使用一次</li>
+                            <li>僅支援 <strong>3 分鐘</strong>以內的影片</li>
                             <li>處理期間可以關閉網頁，我們會通知您</li>
+                            <li>如果Email遲遲沒有寄來，請檢查一下垃圾郵件</li>
                         </ul>
                     </div>
                 </div>
@@ -596,11 +563,14 @@
                     <div class="upload-area" id="uploadArea">
                         <div class="upload-icon">📤</div>
                         <div class="upload-text">拖放影片到這裡或點擊上傳</div>
-                        <div class="upload-subtext">支持 MP4 格式（最長 1 分鐘）</div>
+                        <div class="upload-subtext">支持 MP4 格式（最長 3 分鐘）</div>
                     </div>
                     <input type="file" id="videoFile" accept="video/mp4" required>
                     <div class="file-info" id="fileInfo">
                         <strong>已選擇：</strong> <span id="fileName"></span>
+                    </div>
+                    <div id="filenameWarning" style="display:none; margin-top:10px; padding:10px 14px; background:rgba(255,211,61,.1); border:1px solid rgba(255,211,61,.4); border-radius:6px; color:#ffd93d; font-size:0.88em; line-height:1.6;">
+                        ⚠️ 檔名含有中文字元，已自動重新命名為 <strong id="renamedTo"></strong>
                     </div>
                 </div>
 
@@ -611,27 +581,21 @@
                     <small>💡 檔案將儲存在 audio_files 目錄，檔名自動使用您的 Email 前綴</small>
                 </div>
 
-                <!-- 語音翻譯語言 -->
-                <div class="two-column">
-                    <div class="form-group">
-                        <label for="voiceLanguage">語音翻譯語言</label>
-                        <select id="voiceLanguage" name="voice_language" required>
-                            <option value="日文" selected>日文 (Japanese)</option>
-                            <option value="英文">英文 (English)</option>
-                            <option value="中文">中文 (Chinese)</option>
-                            <option value="德文">德文 (German)</option>                         
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="slideLanguage">投影片翻譯語言</label>
-                        <select id="slideLanguage" name="slide_language">
-                            <option value="Japanese" selected>Japanese (日文)</option>
-                            <option value="English">English (英文)</option>
-                            <option value="Chinese">Chinese (中文)</option>
-                            <option value="German">German (德文)</option>                          
-                        </select>
-                    </div>
+                <!-- 翻譯語言（語音與投影片同步） -->
+                <div class="form-group">
+                    <label for="voiceLanguage">翻譯語言</label>
+                    <select id="voiceLanguage" name="voice_language" required>
+                        <option value="英文" selected>英文 (English)</option>
+                        <option value="中文">中文 (Chinese)</option>
+                        <option value="日文">日文 (Japanese)</option>
+                        <option value="韓文">韓文 (Korean)</option>
+                        <option value="德文">德文 (German)</option>
+                        <option value="法文">法文 (French)</option>
+                        <option value="俄文">俄文 (Russian)</option>
+                    </select>
+                    <!-- 隱藏欄位：由 JS 自動同步為英文名稱供後端使用 -->
+                    <input type="hidden" id="slideLanguage" name="slide_language" value="English">
+                    <small>💡 語音翻譯與投影片文字翻譯將使用相同語言</small>
                 </div>
 
                 <!-- 投影片翻譯選項 -->
@@ -691,6 +655,43 @@
     </div>
 
     <script>
+        // 清除舊版客戶端冷卻快取（冷卻僅由伺服器端管理）
+        Object.keys(localStorage).filter(k => k.startsWith('dvt_cooldown_')).forEach(k => localStorage.removeItem(k));
+
+        // 檢查服務是否暫停並顯示橫幅
+        (async function checkServiceStatus() {
+            try {
+                const r = await fetch('/service/status');
+                const d = await r.json();
+                if (d.paused) {
+                    document.getElementById('pauseBanner').style.display = 'block';
+                    document.getElementById('submitBtn').disabled = true;
+                    document.getElementById('submitBtn').textContent = '⏸ 服務暫停中，請稍後再試';
+                }
+            } catch(e) {}
+        })();
+
+        // 檢查服務截止日是否已到
+        (async function checkDeadline() {
+            try {
+                const r = await fetch('/service/deadline');
+                const d = await r.json();
+                if (d.expired) {
+                    const btn = document.getElementById('submitBtn');
+                    btn.disabled = true;
+                    btn.textContent = '⏹ 服務體驗期已結束';
+                    btn.style.opacity = '0.45';
+                    // Show a banner if not already shown
+                    const pb = document.getElementById('pauseBanner');
+                    pb.style.display = 'block';
+                    pb.textContent = '⏹ 此服務的體驗期已結束，不再接受新的影片上傳。感謝您的參與！';
+                    pb.style.color = '#a3a3a3';
+                    pb.style.borderColor = 'rgba(163,163,163,.35)';
+                    pb.style.background = 'rgba(163,163,163,.07)';
+                }
+            } catch(e) {}
+        })();
+
         // DOM 元素
         const uploadArea = document.getElementById('uploadArea');
         const videoFile = document.getElementById('videoFile');
@@ -705,46 +706,6 @@
         const logContainer = document.getElementById('logContainer');
         const resultContainer = document.getElementById('resultContainer');
         const downloadBtn = document.getElementById('downloadBtn');
-
-        // API 提供者切換處理
-        const apiProviderSelect = document.getElementById('apiProvider');
-        const apiKeyGroup = document.getElementById('apiKeyGroup');
-        const apiKeyLabel = document.getElementById('apiKeyLabel');
-        const apiKeyInput = document.getElementById('apiKey');
-        const localLlmConfig = document.getElementById('localLlmConfig');
-
-        apiProviderSelect.addEventListener('change', function() {
-            const provider = this.value;
-            
-            const labels = {
-                'gemini': '🔑 Gemini API Key',
-                'openai': '🔑 OpenAI API Key',
-                'claude': '🔑 Claude API Key',
-                'local_llm': '🔑 API Key (本地 LLM 不需要)'
-            };
-            
-            const placeholders = {
-                'gemini': '輸入您的 Gemini API Key',
-                'openai': '輸入您的 OpenAI API Key (sk-...)',
-                'claude': '輸入您的 Claude API Key (sk-ant-...)',
-                'local_llm': '本地 LLM 通常不需要 API Key'
-            };
-            
-            apiKeyLabel.textContent = labels[provider];
-            apiKeyInput.placeholder = placeholders[provider];
-            
-            if (provider === 'local_llm') {
-                localLlmConfig.style.display = 'block';
-                apiKeyInput.required = false;
-                apiKeyInput.value = 'local';
-            } else {
-                localLlmConfig.style.display = 'none';
-                apiKeyInput.required = true;
-                if (apiKeyInput.value === 'local') {
-                    apiKeyInput.value = '';
-                }
-            }
-        });
 
         // 拖放上傳功能
         uploadArea.addEventListener('click', () => videoFile.click());
@@ -764,6 +725,8 @@
             
             const files = e.dataTransfer.files;
             if (files.length > 0 && files[0].type === 'video/mp4') {
+                const safe = sanitizeFileName(files[0].name);
+                notifyRename(files[0].name, safe);
                 videoFile.files = files;
                 displayFileName(files[0].name);
             } else {
@@ -773,10 +736,55 @@
 
         videoFile.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                displayFileName(e.target.files[0].name);
-                updateFullOutputPath();
+                const file = e.target.files[0];
+                const safe = sanitizeFileName(file.name);
+                notifyRename(file.name, safe);
+                const videoEl = document.createElement('video');
+                videoEl.preload = 'metadata';
+                videoEl.onloadedmetadata = function() {
+                    window.URL.revokeObjectURL(videoEl.src);
+                    const duration = videoEl.duration;
+                    if (duration > 180) {
+                        const mins = Math.floor(duration / 60);
+                        const secs = Math.floor(duration % 60);
+                        alert(`❌ 影片時長 ${mins} 分 ${secs} 秒，超過限制（最多 3 分鐘），請裁剪影片再上傳。`);
+                        videoFile.value = '';
+                        fileInfo.classList.remove('show');
+                        return;
+                    }
+                    displayFileName(file.name);
+                    updateOutputFileName();
+                };
+                videoEl.src = URL.createObjectURL(file);
             }
         });
+
+        // 檢查檔名是否含有中文字元
+        function hasChinese(str) {
+            return /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(str);
+        }
+
+        // 將中文檔名轉換為安全的英文檔名；若已是英文則原樣回傳
+        // 若含中文，改用使用者 Email @ 前的名稱
+        function sanitizeFileName(name) {
+            if (!hasChinese(name)) return name;
+            const dotIdx = name.lastIndexOf('.');
+            const ext = (dotIdx >= 0 ? name.slice(dotIdx) : '.mp4').toLowerCase();
+            const email = document.getElementById('userEmail').value.trim();
+            const base = email.includes('@') ? email.split('@')[0] : 'video';
+            return base + ext;
+        }
+
+        // 若檔名被重新命名，顯示黃色提示；否則隱藏
+        function notifyRename(originalName, safeName) {
+            const warn = document.getElementById('filenameWarning');
+            if (originalName !== safeName) {
+                document.getElementById('renamedTo').textContent = safeName;
+                warn.style.display = 'block';
+            } else {
+                warn.style.display = 'none';
+            }
+        }
 
         function displayFileName(name) {
             fileName.textContent = name;
@@ -803,6 +811,19 @@
 
         // 當 Email 輸入時，自動更新輸出文件名顯示
         emailInput.addEventListener('input', function() {
+            // 管理者入口：輸入特定字串後由伺服器端驗證，密碼不存於前端
+            const val = emailInput.value.trim();
+            if (val.length >= 8 && !val.includes('@')) {
+                // 可能是管理者密碼，靜默向伺服器確認
+                fetch('/admin/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: val })
+                }).then(r => r.json()).then(data => {
+                    if (data.ok) window.location.href = '/admin';
+                }).catch(() => {});
+                return;
+            }
             updateOutputFileName();
         });
 
@@ -826,6 +847,21 @@
                 outputFileNameDisplay.style.color = 'var(--color-gray-400)';
             }
         }
+
+        // 語音語言 → 投影片語言同步（中文名稱 → 英文名稱映射）
+        const voiceLangToSlide = {
+            '英文': 'English',
+            '中文': 'Chinese',
+            '日文': 'Japanese',
+            '韓文': 'Korean',
+            '德文': 'German',
+            '法文': 'French',
+            '俄文': 'Russian',
+        };
+        document.getElementById('voiceLanguage').addEventListener('change', function() {
+            const slideVal = voiceLangToSlide[this.value] || 'English';
+            document.getElementById('slideLanguage').value = slideVal;
+        });
 
         // 添加日誌
         function addLog(message, type = 'info') {
@@ -871,20 +907,15 @@
             addLog('開始處理影片...', 'info');
 
             const formData = new FormData();
-            formData.append('video', videoFile.files[0]);
+            const safeFilename = sanitizeFileName(videoFile.files[0].name);
+            formData.append('video', videoFile.files[0], safeFilename);
             formData.append('email', document.getElementById('userEmail').value);
-            formData.append('api_key', document.getElementById('apiKey').value);
             formData.append('voice_language', document.getElementById('voiceLanguage').value);
             formData.append('slide_language', document.getElementById('slideLanguage').value);
             formData.append('enable_slide_translation', document.getElementById('enableSlideTranslation').checked);
-            formData.append('min_segment_duration', '3');  // 固定默認值：3秒
-            formData.append('hash_threshold', '8');  // 固定默認值：8
-            formData.append('api_provider', document.getElementById('apiProvider').value);
-            
-            if (document.getElementById('apiProvider').value === 'local_llm') {
-                formData.append('local_llm_url', document.getElementById('localLlmUrl').value);
-                formData.append('local_llm_model', document.getElementById('localLlmModel').value);
-            }
+            formData.append('min_segment_duration', '3');
+            formData.append('hash_threshold', '8');
+            formData.append('tts_engine', 'f5tts');
             
             // 輸出目錄和文件名由後端自動處理（使用 Email 前綴）
 
@@ -913,14 +944,16 @@
                 addLog(`🎬 影片時長: ${data.video_duration}`, 'info');
                 addLog(`📊 隊列位置: 第 ${data.queue_position} 位`, 'info');
                 addLog(`📝 任務 ID: ${taskId}`, 'info');
-                addLog(`ℹ️  您可以關閉網頁，處理完成後會寄送 Email 通知`, 'info');
-                
+                addLog(`⏩ 即將跳轉到排隊顯示頁面...`, 'info');
+
                 // 更新按鈕狀態
-                submitBtn.textContent = '✅ 已加入隊列';
+                submitBtn.textContent = '✅ 已加入隊列，正在跳轉...';
+                updateProgress(10, `排隊中（第 ${data.queue_position} 位）`);
+
+                // 自動跳轉到排隊頁面
                 setTimeout(() => {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = '開始處理影片';
-                }, 3000);
+                    window.location.href = `/queue?task_id=${encodeURIComponent(taskId)}`;
+                }, 2000);
 
             } catch (error) {
                 addLog(`錯誤: ${error.message}`, 'error');

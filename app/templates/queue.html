@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排隊狀態 - DeepVidTranslate Service</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --color-black: #000000;
+            --color-dark: #0f0f0f;
+            --color-gray-900: #1a1a1a;
+            --color-gray-800: #2d2d2d;
+            --color-gray-700: #404040;
+            --color-gray-600: #525252;
+            --color-gray-500: #6b6b6b;
+            --color-gray-400: #8a8a8a;
+            --color-gray-300: #a3a3a3;
+            --color-gray-200: #c4c4c4;
+            --color-gray-100: #e0e0e0;
+            --color-white: #ffffff;
+            --color-processing: #4ade80;
+            --color-queued: #facc15;
+            --color-done: #60a5fa;
+            --color-failed: #f87171;
+            --color-highlight: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--color-black);
+            color: var(--color-gray-200);
+            min-height: 100vh;
+        }
+
+        /* ====== Navbar ====== */
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(26, 26, 26, 0.97);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--color-gray-800);
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-left { display: flex; align-items: center; gap: 16px; }
+
+        .nav-logo {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: var(--color-white);
+            text-decoration: none;
+        }
+
+        .nav-divider {
+            color: var(--color-gray-700);
+        }
+
+        .nav-title {
+            font-size: 1em;
+            color: var(--color-gray-300);
+        }
+
+        .btn-nav {
+            padding: 9px 22px;
+            background: var(--color-white);
+            color: var(--color-black);
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-nav:hover {
+            background: var(--color-gray-100);
+            transform: translateY(-1px);
+        }
+
+        /* ====== Main layout ====== */
+        .page-wrapper {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+
+        /* ====== My Task Banner ====== */
+        .my-task-banner {
+            display: none;
+            margin-bottom: 32px;
+            padding: 24px 28px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 12px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .my-task-banner.show { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+
+        .banner-position-box {
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .banner-pos-number {
+            font-size: 3em;
+            font-weight: 800;
+            color: var(--color-white);
+            line-height: 1;
+        }
+
+        .banner-pos-label {
+            font-size: 0.75em;
+            color: var(--color-gray-400);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+
+        .banner-divider {
+            width: 1px;
+            height: 60px;
+            background: var(--color-gray-700);
+        }
+
+        .banner-info { flex: 1; }
+
+        .banner-info h2 {
+            font-size: 1.15em;
+            color: var(--color-white);
+            margin-bottom: 6px;
+        }
+
+        .banner-info p {
+            font-size: 0.88em;
+            color: var(--color-gray-400);
+            line-height: 1.5;
+        }
+
+        .banner-status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        .dot-processing { background: var(--color-processing); animation: pulse 1.5s infinite; }
+        .dot-queued { background: var(--color-queued); }
+        .dot-done { background: var(--color-done); }
+        .dot-failed { background: var(--color-failed); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ====== Stats bar ====== */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--color-gray-900);
+            border: 1px solid var(--color-gray-800);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-num {
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--color-white);
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.78em;
+            color: var(--color-gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        /* ====== Section ====== */
+        .section { margin-bottom: 36px; }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--color-gray-800);
+        }
+
+        .section-title h2 {
+            font-size: 1.05em;
+            font-weight: 600;
+            color: var(--color-gray-200);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .section-badge {
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.78em;
+            font-weight: 600;
+        }
+
+        .badge-processing { background: rgba(74, 222, 128, 0.15); color: var(--color-processing); border: 1px solid rgba(74, 222, 128, 0.3); }
+        .badge-queued { background: rgba(250, 204, 21, 0.12); color: var(--color-queued); border: 1px solid rgba(250, 204, 21, 0.3); }
+        .badge-done { background: rgba(96, 165, 250, 0.12); color: var(--color-done); border: 1px solid rgba(96, 165, 250, 0.3); }
+
+        /* ====== Task card ====== */
+        .task-card {
+            background: var(--color-gray-900);
+            border: 1px solid var(--color-gray-800);
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            transition: border-color 0.2s;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .task-card:hover { border-color: var(--color-gray-700); }
+
+        /* highlight current user's task */
+        .task-card.mine {
+            border-color: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.04);
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .task-card.mine::before {
+            content: '你的任務';
+            position: absolute;
+        }
+
+        .pos-badge {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1em;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .pos-processing { background: rgba(74, 222, 128, 0.15); color: var(--color-processing); }
+        .pos-queued { background: rgba(250, 204, 21, 0.12); color: var(--color-queued); }
+        .pos-done-ok { background: rgba(96, 165, 250, 0.12); color: var(--color-done); }
+        .pos-done-fail { background: rgba(248, 113, 113, 0.12); color: var(--color-failed); }
+
+        .task-info { flex: 1; min-width: 0; }
+
+        .task-filename {
+            font-size: 0.92em;
+            font-weight: 600;
+            color: var(--color-gray-100);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 3px;
+        }
+
+        .task-meta {
+            font-size: 0.78em;
+            color: var(--color-gray-500);
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .task-mine-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.12);
+            color: var(--color-white);
+            font-size: 0.72em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .task-status-label {
+            font-size: 0.8em;
+            font-weight: 600;
+            flex-shrink: 0;
+            text-align: right;
+        }
+
+        .label-processing { color: var(--color-processing); }
+        .label-queued { color: var(--color-queued); }
+        .label-done { color: var(--color-done); }
+        .label-failed { color: var(--color-failed); }
+
+        /* ====== Empty state ====== */
+        .empty-state {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--color-gray-600);
+            font-size: 0.9em;
+            background: var(--color-gray-900);
+            border: 1px dashed var(--color-gray-800);
+            border-radius: 10px;
+        }
+
+        /* ====== Refresh indicator ====== */
+        .refresh-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 28px;
+            font-size: 0.82em;
+            color: var(--color-gray-600);
+        }
+
+        .refresh-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--color-gray-600);
+            flex-shrink: 0;
+        }
+
+        .refresh-dot.active { background: var(--color-processing); animation: pulse 1s infinite; }
+
+        .countdown-bar-wrap {
+            flex: 1;
+            height: 2px;
+            background: var(--color-gray-800);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-left: 4px;
+        }
+
+        .countdown-bar-fill {
+            height: 100%;
+            background: var(--color-gray-600);
+            width: 100%;
+            transition: width 1s linear;
+        }
+
+        /* ====== Responsive ====== */
+        @media (max-width: 600px) {
+            .stats-bar { grid-template-columns: repeat(2, 1fr); }
+            .task-card { gap: 12px; padding: 14px 16px; }
+            .navbar { padding: 14px 20px; }
+            .page-wrapper { padding: 24px 16px 60px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-left">
+            <a href="/" class="nav-logo">DeepVidTranslate</a>
+            <span class="nav-divider">/</span>
+            <span class="nav-title">排隊狀態</span>
+        </div>
+        <a href="/app" class="btn-nav">+ 提交新任務</a>
+    </nav>
+
+    <div class="page-wrapper">
+
+        <!-- My task banner (shown only when task_id is in URL) -->
+        <div class="my-task-banner" id="myTaskBanner">
+            <div class="banner-position-box">
+                <div class="banner-pos-number" id="bannerPositionNum">—</div>
+                <div class="banner-pos-label" id="bannerPositionLabel">排隊位置</div>
+            </div>
+            <div class="banner-divider"></div>
+            <div class="banner-info">
+                <h2 id="bannerStatusText">
+                    <span class="banner-status-dot" id="bannerDot"></span>
+                    <span id="bannerStatusLabel">載入中...</span>
+                </h2>
+                <p id="bannerDetail">正在取得任務狀態...</p>
+            </div>
+        </div>
+
+        <!-- Stats bar -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-num" id="statProcessing">—</div>
+                <div class="stat-label">翻譯中</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" id="statQueued">—</div>
+                <div class="stat-label">排隊中</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" id="statCompleted">—</div>
+                <div class="stat-label">已完成</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" id="statFailed">—</div>
+                <div class="stat-label">處理失敗</div>
+            </div>
+        </div>
+
+        <!-- Refresh status -->
+        <div class="refresh-bar">
+            <div class="refresh-dot active" id="refreshDot"></div>
+            <span id="refreshText">即時更新中</span>
+            <div class="countdown-bar-wrap">
+                <div class="countdown-bar-fill" id="countdownFill"></div>
+            </div>
+            <span id="countdownLabel">5s</span>
+        </div>
+
+        <!-- Section: Processing -->
+        <div class="section" id="sectionProcessing">
+            <div class="section-title">
+                <h2>正在翻譯中</h2>
+                <span class="section-badge badge-processing" id="bProcessingCount">0</span>
+            </div>
+            <div id="listProcessing">
+                <div class="empty-state">目前沒有任務正在處理</div>
+            </div>
+        </div>
+
+        <!-- Section: Queued -->
+        <div class="section" id="sectionQueued">
+            <div class="section-title">
+                <h2>排隊等待中</h2>
+                <span class="section-badge badge-queued" id="bQueuedCount">0</span>
+            </div>
+            <div id="listQueued">
+                <div class="empty-state">隊列目前為空</div>
+            </div>
+        </div>
+
+        <!-- Section: Done -->
+        <div class="section" id="sectionDone">
+            <div class="section-title">
+                <h2>近期完成記錄</h2>
+                <span class="section-badge badge-done" id="bDoneCount">0</span>
+            </div>
+            <div id="listDone">
+                <div class="empty-state">尚無完成記錄</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const params = new URLSearchParams(window.location.search);
+    const MY_TASK_ID = params.get('task_id') || null;
+
+    function formatTime(iso) {
+        if (!iso) return '—';
+        try {
+            // SQLite stores timestamps without TZ; treat as local time
+            const d = new Date(iso.replace(' ', 'T'));
+            return d.toLocaleString('zh-TW', {
+                month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            });
+        } catch { return iso; }
+    }
+
+    function formatDuration(secs) {
+        if (!secs) return '';
+        const m = Math.floor(secs / 60);
+        const s = Math.round(secs % 60);
+        return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+    }
+
+    function statusLabel(status) {
+        return { processing: '翻譯中', queued: '等待中', completed: '已完成', failed: '失敗' }[status] || status;
+    }
+
+    // ── Build task card ───────────────────────────────────────────────────────
+    function buildCard(task, posContent, posClass, labelClass) {
+        const isMine = MY_TASK_ID && task.task_id === MY_TASK_ID;
+        const mineTag = isMine ? '<span class="task-mine-tag">你的任務</span>' : '';
+        const timeInfo = task.completed_at
+            ? `完成於 ${formatTime(task.completed_at)}`
+            : task.started_at
+                ? `開始於 ${formatTime(task.started_at)}`
+                : `提交於 ${formatTime(task.created_at)}`;
+        const durationInfo = task.video_duration ? `・影片 ${formatDuration(task.video_duration)}` : '';
+
+        return `
+            <div class="task-card ${isMine ? 'mine' : ''}">
+                <div class="pos-badge ${posClass}">${posContent}</div>
+                <div class="task-info">
+                    <div class="task-filename">${escapeHtml(task.video_filename)}${mineTag}</div>
+                    <div class="task-meta">
+                        <span>${escapeHtml(task.email_masked)}</span>
+                        <span>${timeInfo}${durationInfo}</span>
+                    </div>
+                </div>
+                <div class="task-status-label ${labelClass}">${statusLabel(task.status)}</div>
+            </div>`;
+    }
+
+    function escapeHtml(str) {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ── Banner update ─────────────────────────────────────────────────────────
+    function updateBanner(allTasks) {
+        if (!MY_TASK_ID) return;
+
+        const banner = document.getElementById('myTaskBanner');
+
+        // Find my task across all groups
+        const all = [
+            ...(allTasks.processing || []),
+            ...(allTasks.queued || []),
+            ...(allTasks.done || [])
+        ];
+        const mine = all.find(t => t.task_id === MY_TASK_ID);
+
+        if (!mine) {
+            banner.classList.add('show');
+            document.getElementById('bannerPositionNum').textContent = '?';
+            document.getElementById('bannerPositionLabel').textContent = '找不到任務';
+            document.getElementById('bannerStatusLabel').textContent = '找不到任務記錄';
+            document.getElementById('bannerDetail').textContent = '任務 ID 不存在或已被清除。';
+            return;
+        }
+
+        banner.classList.add('show');
+        const dot = document.getElementById('bannerDot');
+
+        if (mine.status === 'processing') {
+            document.getElementById('bannerPositionNum').textContent = '▶';
+            document.getElementById('bannerPositionLabel').textContent = '正在翻譯';
+            dot.className = 'banner-status-dot dot-processing';
+            document.getElementById('bannerStatusLabel').textContent = '您的影片正在翻譯中！';
+            document.getElementById('bannerDetail').textContent = `開始處理時間：${formatTime(mine.started_at)}。完成後將寄送 Email 通知。`;
+        } else if (mine.status === 'queued') {
+            const pos = mine.queue_position;
+            document.getElementById('bannerPositionNum').textContent = `#${pos}`;
+            document.getElementById('bannerPositionLabel').textContent = pos === 1 ? '即將開始' : '排隊中';
+            dot.className = 'banner-status-dot dot-queued';
+            document.getElementById('bannerStatusLabel').textContent = `您目前排在第 ${pos} 位`;
+            const ahead = pos - 1;
+            document.getElementById('bannerDetail').textContent = ahead === 0
+                ? '您是下一位！任務即將開始處理。'
+                : `前方還有 ${ahead} 個任務。提交時間：${formatTime(mine.created_at)}。`;
+        } else if (mine.status === 'completed') {
+            document.getElementById('bannerPositionNum').textContent = '✓';
+            document.getElementById('bannerPositionLabel').textContent = '已完成';
+            dot.className = 'banner-status-dot dot-done';
+            document.getElementById('bannerStatusLabel').textContent = '您的影片翻譯完成！';
+            document.getElementById('bannerDetail').textContent = `完成時間：${formatTime(mine.completed_at)}。已寄送 Email 通知。`;
+        } else if (mine.status === 'failed') {
+            document.getElementById('bannerPositionNum').textContent = '✗';
+            document.getElementById('bannerPositionLabel').textContent = '處理失敗';
+            dot.className = 'banner-status-dot dot-failed';
+            document.getElementById('bannerStatusLabel').textContent = '您的任務處理失敗';
+            document.getElementById('bannerDetail').textContent = '請重新提交或聯繫管理員。';
+        }
+    }
+
+    // ── Render list ───────────────────────────────────────────────────────────
+    function renderProcessing(tasks) {
+        const el = document.getElementById('listProcessing');
+        document.getElementById('bProcessingCount').textContent = tasks.length;
+        if (!tasks.length) {
+            el.innerHTML = '<div class="empty-state">目前沒有任務正在處理</div>';
+            return;
+        }
+        el.innerHTML = tasks.map(t =>
+            buildCard(t, '▶', 'pos-processing', 'label-processing')
+        ).join('');
+    }
+
+    function renderQueued(tasks) {
+        const el = document.getElementById('listQueued');
+        document.getElementById('bQueuedCount').textContent = tasks.length;
+        if (!tasks.length) {
+            el.innerHTML = '<div class="empty-state">隊列目前為空</div>';
+            return;
+        }
+        el.innerHTML = tasks.map(t =>
+            buildCard(t, `#${t.queue_position}`, 'pos-queued', 'label-queued')
+        ).join('');
+    }
+
+    function renderDone(tasks) {
+        const el = document.getElementById('listDone');
+        document.getElementById('bDoneCount').textContent = tasks.length;
+        if (!tasks.length) {
+            el.innerHTML = '<div class="empty-state">尚無完成記錄</div>';
+            return;
+        }
+        el.innerHTML = tasks.map(t => {
+            const posClass = t.status === 'completed' ? 'pos-done-ok' : 'pos-done-fail';
+            const labelClass = t.status === 'completed' ? 'label-done' : 'label-failed';
+            const icon = t.status === 'completed' ? '✓' : '✗';
+            return buildCard(t, icon, posClass, labelClass);
+        }).join('');
+    }
+
+    // ── Stats ─────────────────────────────────────────────────────────────────
+    function renderStats(stats) {
+        document.getElementById('statProcessing').textContent = stats.processing ?? '—';
+        document.getElementById('statQueued').textContent     = stats.queued ?? '—';
+        document.getElementById('statCompleted').textContent  = stats.completed ?? '—';
+        document.getElementById('statFailed').textContent     = stats.failed ?? '—';
+    }
+
+    // ── Fetch & render ────────────────────────────────────────────────────────
+    async function fetchAndRender() {
+        try {
+            const res = await fetch('/queue/all');
+            const data = await res.json();
+            if (data.error) { console.error(data.error); return; }
+
+            renderProcessing(data.tasks.processing || []);
+            renderQueued(data.tasks.queued || []);
+            renderDone(data.tasks.done || []);
+            renderStats(data.stats || {});
+            updateBanner(data.tasks);
+        } catch (e) {
+            console.error('Fetch error:', e);
+        }
+    }
+
+    // ── Countdown bar ─────────────────────────────────────────────────────────
+    const INTERVAL_SEC = 5;
+    let countdownVal = INTERVAL_SEC;
+
+    function startCountdown() {
+        countdownVal = INTERVAL_SEC;
+        const fill = document.getElementById('countdownFill');
+        const label = document.getElementById('countdownLabel');
+
+        // reset
+        fill.style.transition = 'none';
+        fill.style.width = '100%';
+        label.textContent = `${INTERVAL_SEC}s`;
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                fill.style.transition = `width ${INTERVAL_SEC}s linear`;
+                fill.style.width = '0%';
+            });
+        });
+
+        let tick = INTERVAL_SEC;
+        const timer = setInterval(() => {
+            tick -= 1;
+            label.textContent = `${Math.max(0, tick)}s`;
+            if (tick <= 0) clearInterval(timer);
+        }, 1000);
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    fetchAndRender();    // initial load
+    startCountdown();
+
+    setInterval(() => {
+        fetchAndRender();
+        startCountdown();
+    }, INTERVAL_SEC * 1000);
+    </script>
+</body>
+</html>

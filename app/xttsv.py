@@ -163,7 +163,7 @@ def split_text(text, max_length=80):
     
     return chunks
 
-def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文"):
+def xttsv(text, speaker_audio_path, output_path="output.wav", language="英文"):
     config = XttsConfig()
     config.load_json("app/XTTS-v2/config.json")
     model = Xtts.init_from_config(config)
@@ -205,11 +205,12 @@ def xttsv(text, speaker_audio_path, output_path="output.wav", language="日文")
     
     # 設置語言代碼和字符限制
     language_configs = {
-        "日文": {"code": "ja", "max_length": 80},
         "英文": {"code": "en", "max_length": 100}, 
         "中文": {"code": "zh", "max_length": 82},
         "德文": {"code": "de", "max_length": 100},
         "法文": {"code": "fr", "max_length": 100},
+        "印地文": {"code": "hi", "max_length": 90},
+        "韓文": {"code": "ko", "max_length": 85},
         "俄文": {"code": "ru", "max_length": 90},
         "義大利文": {"code": "it", "max_length": 100},
         "西班牙文": {"code": "es", "max_length": 100}

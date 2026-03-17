@@ -112,9 +112,9 @@ processing_state = ProcessingState()
 class AppState:
     api_key: str = ""
     input_path: str = ""
-    language: str = "日文"  # 與 tkinter 預設一致
+    language: str = "英文"  # 預設語言改為英文
     slide_enabled: bool = True
-    slide_language: str = "Japanese"
+    slide_language: str = "English"
     min_segment_duration: str = "2"
     hash_threshold: str = "5"
     output_path: str = ""
@@ -691,9 +691,12 @@ def page():
             with me.box(style=me.Style(min_width="160px")):
                 me.text("語音翻譯語言", style=form_label_style())
                 options = [
-                    me.SelectOption(label="日文", value="日文"),
                     me.SelectOption(label="英文", value="英文"),
                     me.SelectOption(label="中文", value="中文"),
+                    me.SelectOption(label="德文", value="德文"),
+                    me.SelectOption(label="法文", value="法文"),
+                    me.SelectOption(label="印地文", value="印地文"),
+                    me.SelectOption(label="韓文", value="韓文"),
                 ]
                 me.select(
                     value=state.language,
@@ -705,9 +708,12 @@ def page():
                 with me.box(style=me.Style(min_width="160px")):
                     me.text("投影片翻譯語言", style=form_label_style())
                     slide_options = [
-                        me.SelectOption(label="Japanese", value="Japanese"),
                         me.SelectOption(label="English", value="English"),
                         me.SelectOption(label="Chinese", value="Chinese"),
+                        me.SelectOption(label="German", value="German"),
+                        me.SelectOption(label="French", value="French"),
+                        me.SelectOption(label="Hindi", value="Hindi"),
+                        me.SelectOption(label="Korean", value="Korean"),
                     ]
                     me.select(
                         value=state.slide_language,

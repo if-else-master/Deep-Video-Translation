@@ -1,347 +1,249 @@
 """
-F5-TTS 語音克隆模組
-使用 F5-TTS 進行高品質的語音克隆
+Qwen3-TTS 語音克隆模組（替代 F5-TTS）
+使用 Qwen/Qwen3-TTS-12Hz-1.7B-Base 進行聲音克隆
 
-使用方式:
-    from f5ttsv import f5ttsv
-    output_path = f5ttsv(text, speaker_audio_path, output_path, language)
+支援語言: 中文, 英文, 日文, 韓文, 德文, 法文, 俄文, 葡萄牙文, 西班牙文, 義大利文
+原始介面完全相容，main.py 無需修改。
 """
 
 import os
 import sys
 import subprocess
-import re
+import json
 import numpy as np
 import soundfile as sf
 
-# 設置環境變數，解決 Mac MPS 設備兼容性問題
-# 某些 PyTorch 操作在 MPS 上未實現，需要回退到 CPU
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+# ─── 語言對照表 (中文 UI 名稱  →  Qwen3-TTS 英文語言碼) ────────────────────
+LANGUAGE_MAP = {
+    "英文":    "English",
+    "中文":    "Chinese",
+    "日文":    "Japanese",
+    "韓文":    "Korean",
+    "德文":    "German",
+    "法文":    "French",
+    "俄文":    "Russian",
+    "葡萄牙文": "Portuguese",
+    "西班牙文": "Spanish",
+    "義大利文": "Italian",
+    "印地文":  "English",   # Qwen3-TTS 不支援，退而求其次
+}
 
-# 添加 F5-TTS 路徑到系統路徑
-f5_tts_path = os.path.join(os.path.dirname(__file__), 'F5-TTS', 'src')
-if f5_tts_path not in sys.path:
-    sys.path.insert(0, f5_tts_path)
 
+# ════════════════════════════════════════════════════════
+#  通用輔助函數（ffmpeg / ffprobe，與 TTS 無關）
+#  這些函數被 main.py 直接 import，介面不可改動
+# ════════════════════════════════════════════════════════
 
 def check_audio_stream(video_path):
-    """檢查視頻是否包含音頻流"""
+    """使用 ffprobe 檢查影片是否包含音訊流。"""
     try:
-        command = f'ffprobe -v quiet -print_format json -show_streams "{video_path}"'
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            import json
-            data = json.loads(result.stdout)
-            streams = data.get('streams', [])
-            
-            # 檢查是否有音頻流
-            audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
-            return len(audio_streams) > 0
-        else:
-            print(f"⚠️ 無法檢查音頻流: {result.stderr}")
-            return False
-    except Exception as e:
-        print(f"⚠️ 檢查音頻流時發生錯誤: {e}")
+        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
+               "-show_streams", "-select_streams", "a", video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        info = json.loads(result.stdout)
+        return len(info.get("streams", [])) > 0
+    except Exception:
         return False
 
 
 def get_video_duration(video_path):
-    """獲取視頻時長（秒）"""
+    """回傳影片 / 音訊的時長（秒，float）。"""
     try:
-        command = f'ffprobe -v quiet -print_format json -show_format "{video_path}"'
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            import json
-            data = json.loads(result.stdout)
-            duration = float(data.get('format', {}).get('duration', 0))
-            return duration
-        else:
-            print(f"⚠️ 無法獲取視頻時長: {result.stderr}")
-            return 5.0  # 預設5秒
+        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
+               "-show_format", video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        info = json.loads(result.stdout)
+        return float(info["format"]["duration"])
+    except Exception:
+        return 0.0
+
+
+def create_silent_audio(duration_seconds, output_audio_path, sample_rate=24000):
+    """建立指定時長的靜音 WAV 檔案。"""
+    out_dir = os.path.dirname(output_audio_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    cmd = (
+        f'ffmpeg -y -f lavfi '
+        f'-i anullsrc=channel_layout=mono:sample_rate={sample_rate} '
+        f'-t {duration_seconds} "{output_audio_path}"'
+    )
+    subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    return output_audio_path
+
+
+def extract_audio_from_video(video_path, output_audio_path, sample_rate=24000):
+    """從影片提取音訊；若無音訊流則建立靜音替代。"""
+    out_dir = os.path.dirname(output_audio_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    try:
+        if not check_audio_stream(video_path):
+            print(f"⚠️  影片無音訊流，建立靜音替代: {video_path}")
+            duration = get_video_duration(video_path)
+            return create_silent_audio(duration or 5.0, output_audio_path, sample_rate)
+        cmd = (
+            f'ffmpeg -y -i "{video_path}" -vn -ar {sample_rate} -ac 1 '
+            f'-acodec pcm_s16le "{output_audio_path}"'
+        )
+        subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+        return output_audio_path
     except Exception as e:
-        print(f"⚠️ 獲取視頻時長時發生錯誤: {e}")
-        return 5.0  # 預設5秒
-
-
-def create_silent_audio(duration_seconds, output_audio_path):
-    """創建指定長度的靜音音頻文件"""
-    try:
-        output_dir = os.path.dirname(output_audio_path)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-            print(f"📁 創建音頻輸出目錄: {output_dir}")
-        
-        command = f'ffmpeg -y -f lavfi -i anullsrc=r=24000:cl=mono -t {duration_seconds} -ar 24000 -ac 1 "{output_audio_path}"'
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        
-        if os.path.exists(output_audio_path):
-            print(f"✅ 靜音音頻創建成功: {output_audio_path} ({duration_seconds}秒)")
-            return output_audio_path
-        else:
-            raise Exception(f"靜音音頻創建後文件不存在: {output_audio_path}")
-            
-    except subprocess.CalledProcessError as e:
-        print(f"❌ 靜音音頻創建失敗: {e}")
-        print(f"❌ FFmpeg stderr: {e.stderr}")
-        raise Exception(f"靜音音頻創建失敗: {e}")
-
-
-def extract_audio_from_video(video_path, output_audio_path):
-    """從視頻文件中提取音頻，如果沒有音頻流則創建靜音音頻"""
-    try:
-        output_dir = os.path.dirname(output_audio_path)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-            print(f"📁 創建音頻輸出目錄: {output_dir}")
-        
-        # 先檢查視頻是否包含音頻流
-        has_audio = check_audio_stream(video_path)
-        
-        if has_audio:
-            # 有音頻流，正常提取 (F5-TTS 使用 24000 採樣率)
-            print(f"🎵 檢測到音頻流，正在提取...")
-            command = f'ffmpeg -y -i "{video_path}" -ar 24000 -ac 1 "{output_audio_path}"'
-            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-            
-            if os.path.exists(output_audio_path):
-                print(f"✅ 音頻提取成功: {output_audio_path}")
-                return output_audio_path
-            else:
-                raise Exception(f"音頻提取後文件不存在: {output_audio_path}")
-        else:
-            # 沒有音頻流，創建靜音音頻
-            print(f"⚠️ 視頻沒有音頻流，創建靜音音頻...")
-            duration = get_video_duration(video_path)
-            return create_silent_audio(duration, output_audio_path)
-            
-    except subprocess.CalledProcessError as e:
-        # 如果提取失敗，嘗試創建靜音音頻
-        print(f"❌ 音頻提取失敗，嘗試創建靜音音頻: {e}")
+        print(f"❌ 音訊提取失敗，建立靜音替代: {e}")
         try:
             duration = get_video_duration(video_path)
-            return create_silent_audio(duration, output_audio_path)
+            return create_silent_audio(duration or 5.0, output_audio_path, sample_rate)
         except Exception as e2:
-            print(f"❌ 靜音音頻創建也失敗: {e2}")
-            raise Exception(f"音頻處理完全失敗: 原始錯誤={e}, 靜音創建錯誤={e2}")
+            raise Exception(f"音訊處理完全失敗: 提取錯誤={e}, 靜音建立錯誤={e2}")
 
 
-def split_text(text, max_length=120):
-    """將長文本分割成較小的片段（F5-TTS 支援較長文本）"""
-    if len(text) <= max_length:
-        return [text]
-    
-    # 優先按句號分割
-    sentences = re.split(r'[.!?。！？]', text)
-    chunks = []
-    current_chunk = ""
-    
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-            
-        # 如果當前句子本身就太長，按逗號分割
-        if len(sentence) > max_length:
-            sub_sentences = re.split(r'[,，]', sentence)
-            for sub_sentence in sub_sentences:
-                sub_sentence = sub_sentence.strip()
-                if not sub_sentence:
-                    continue
-                    
-                if len(current_chunk + sub_sentence) <= max_length:
-                    current_chunk += sub_sentence + "，"
-                else:
-                    if current_chunk:
-                        chunks.append(current_chunk.rstrip("，"))
-                        current_chunk = sub_sentence + "，"
-                    else:
-                        # 如果單個子句還是太長，強制分割
-                        if len(sub_sentence) > max_length:
-                            for i in range(0, len(sub_sentence), max_length):
-                                chunks.append(sub_sentence[i:i+max_length])
-                        else:
-                            current_chunk = sub_sentence + "，"
-        else:
-            if len(current_chunk + sentence) <= max_length:
-                current_chunk += sentence + "。"
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk.rstrip("。"))
-                current_chunk = sentence + "。"
-    
-    if current_chunk:
-        chunks.append(current_chunk.rstrip("。，"))
-    
-    return chunks
+# ════════════════════════════════════════════════════════
+#  Qwen3-TTS 模型管理（全域單例，避免重複載入）
+# ════════════════════════════════════════════════════════
+
+_qwen3tts_model = None
 
 
-# 全局 F5-TTS 模型實例（避免重複載入）
-_f5tts_model = None
+def _get_device_dtype():
+    """偵測最佳執行裝置與資料型態。"""
+    import torch
+    if torch.cuda.is_available():
+        return "cuda:0", torch.bfloat16
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        # Apple Silicon MPS: bfloat16 支援不穩定，使用 float16
+        return "mps", torch.float16
+    return "cpu", torch.float32
 
 
-def get_f5tts_model():
-    """獲取或初始化 F5-TTS 模型"""
-    global _f5tts_model
-    
-    if _f5tts_model is None:
-        try:
-            from f5_tts.api import F5TTS
-            print("🔄 正在初始化 F5-TTS 模型...")
-            _f5tts_model = F5TTS(model="F5TTS_v1_Base")
-            print("✅ F5-TTS 模型初始化完成")
-        except ImportError as e:
-            print(f"❌ 無法導入 F5-TTS: {e}")
-            print("💡 請確保已安裝 F5-TTS: pip install f5-tts")
-            raise ImportError(f"F5-TTS 模組未安裝: {e}")
-        except Exception as e:
-            print(f"❌ F5-TTS 模型初始化失敗: {e}")
-            raise
-    
-    return _f5tts_model
+def get_qwen3tts_model():
+    """取得（或延遲初始化）Qwen3-TTS-Base 模型。"""
+    global _qwen3tts_model
+    if _qwen3tts_model is not None:
+        return _qwen3tts_model
 
-
-def f5ttsv(text, speaker_audio_path, output_path="output.wav", language="日文"):
-    """
-    使用 F5-TTS 進行語音克隆
-    
-    參數:
-        text: 要合成的文字
-        speaker_audio_path: 說話者音頻參考（可以是視頻或音頻文件）
-        output_path: 輸出音頻路徑
-        language: 語言選項（日文、英文、中文等）
-    
-    返回:
-        output_path: 輸出音頻文件路徑
-    """
-    print(f"🎤 F5-TTS 語音克隆開始...")
-    print(f"📝 文本: {text[:100]}{'...' if len(text) > 100 else ''}")
-    print(f"🔊 參考音頻: {speaker_audio_path}")
-    print(f"🌐 語言: {language}")
-    
-    # 確保輸出目錄存在
-    output_dir = os.path.dirname(output_path)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"📁 創建語音克隆輸出目錄: {output_dir}")
-    
-    # 處理輸入音檔格式
-    file_ext = os.path.splitext(speaker_audio_path)[1].lower()
-    
-    if file_ext in ['.mp4', '.avi', '.mov', '.mkv']:
-        # 如果是視頻文件，提取音頻
-        temp_audio_path = "temp/f5_extracted_audio.wav"
-        os.makedirs("temp", exist_ok=True)
-        speaker_wav = extract_audio_from_video(speaker_audio_path, temp_audio_path)
-        print(f"已從視頻文件提取音頻: {speaker_wav}")
-    elif file_ext in ['.mp3', '.m4a', '.aac', '.flac']:
-        # 如果是其他音頻格式，轉換為 WAV (24000Hz for F5-TTS)
-        temp_audio_path = "temp/f5_converted_audio.wav"
-        os.makedirs("temp", exist_ok=True)
-        try:
-            command = f'ffmpeg -y -i "{speaker_audio_path}" -ar 24000 -ac 1 "{temp_audio_path}"'
-            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-            speaker_wav = temp_audio_path
-            print(f"已轉換音頻格式: {speaker_wav}")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ 音頻轉換失敗: {e}")
-            raise Exception(f"音頻轉換失敗: {e}")
-    else:
-        # 如果已經是 WAV 格式，確保採樣率正確
-        temp_audio_path = "temp/f5_resampled_audio.wav"
-        os.makedirs("temp", exist_ok=True)
-        try:
-            command = f'ffmpeg -y -i "{speaker_audio_path}" -ar 24000 -ac 1 "{temp_audio_path}"'
-            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-            speaker_wav = temp_audio_path
-        except:
-            speaker_wav = speaker_audio_path
-    
-    # 設置語言配置（F5-TTS 支持中文和英文）
-    # F5-TTS 是基於中文/英文訓練的，但可以處理多語言文本
-    language_configs = {
-        "日文": {"max_length": 120},
-        "英文": {"max_length": 150}, 
-        "中文": {"max_length": 120},
-        "德文": {"max_length": 150},
-        "法文": {"max_length": 150},
-        "俄文": {"max_length": 130},
-        "義大利文": {"max_length": 150},
-        "西班牙文": {"max_length": 150}
-    }
-    
-    lang_config = language_configs.get(language, {"max_length": 120})
-    max_length = lang_config["max_length"]
-    
     try:
-        # 獲取 F5-TTS 模型
-        f5_model = get_f5tts_model()
-        
-        # 檢查文本長度並分割
-        if len(text) > max_length:
-            print(f"文本長度 {len(text)} 超過限制 {max_length}，進行分割處理...")
-            text_chunks = split_text(text, max_length)
-            print(f"分割為 {len(text_chunks)} 個片段")
-            
-            # 分別合成每個片段
-            audio_chunks = []
-            sample_rate = None
-            
-            for i, chunk in enumerate(text_chunks):
-                print(f"正在合成第 {i+1}/{len(text_chunks)} 片段: {chunk[:50]}...")
-                
-                wav, sr, _ = f5_model.infer(
-                    ref_file=speaker_wav,
-                    ref_text="",  # 讓 F5-TTS 自動識別參考文本
-                    gen_text=chunk,
-                    file_wave=None,  # 暫時不保存
-                    seed=None,
-                )
-                
-                audio_chunks.append(wav)
-                if sample_rate is None:
-                    sample_rate = sr
-            
-            # 合併所有音頻片段
-            print("正在合併音頻片段...")
-            if audio_chunks:
-                combined_audio = np.concatenate(audio_chunks, axis=0)
-            else:
-                raise ValueError("沒有生成任何音頻片段")
-        else:
-            # 文本長度在限制內，直接合成
-            print("🔄 正在進行語音合成...")
-            combined_audio, sample_rate, _ = f5_model.infer(
-                ref_file=speaker_wav,
-                ref_text="",  # 讓 F5-TTS 自動識別參考文本
-                gen_text=text,
-                file_wave=None,  # 暫時不保存
-                seed=None,
-            )
-        
-        # 保存音頻文件
-        sf.write(output_path, combined_audio, samplerate=sample_rate)
-        print(f"✅ F5-TTS 語音克隆完成: {output_path}")
-        
-        return output_path
-        
+        from qwen_tts import Qwen3TTSModel
+        import torch
+
+        device, dtype = _get_device_dtype()
+        print(f"🔄 初始化 Qwen3-TTS (device={device}, dtype={dtype}) …")
+
+        kwargs = dict(device_map=device, dtype=dtype)
+        # flash_attention_2 僅在 CUDA float16/bfloat16 環境啟用
+        if "cuda" in str(device) and dtype in (torch.bfloat16, torch.float16):
+            kwargs["attn_implementation"] = "flash_attention_2"
+
+        _qwen3tts_model = Qwen3TTSModel.from_pretrained(
+            "Qwen/Qwen3-TTS-12Hz-1.7B-Base", **kwargs
+        )
+        print("✅ Qwen3-TTS 模型初始化完成")
+        return _qwen3tts_model
+
     except ImportError as e:
-        print(f"❌ F5-TTS 未安裝或導入失敗: {e}")
+        print(f"❌ 無法導入 qwen-tts: {e}")
+        print("💡 請安裝: pip install -U qwen-tts")
         raise
     except Exception as e:
-        print(f"❌ F5-TTS 語音合成失敗: {e}")
+        print(f"❌ Qwen3-TTS 模型初始化失敗: {e}")
         import traceback
         traceback.print_exc()
-        raise Exception(f"F5-TTS 語音合成失敗: {e}")
+        raise
 
+
+# ════════════════════════════════════════════════════════
+#  主要語音克隆函數（與原 f5ttsv 介面完全相同）
+# ════════════════════════════════════════════════════════
+
+def f5ttsv(text, speaker_audio_path, output_path="output.wav", language="英文"):
+    """
+    使用 Qwen3-TTS 進行語音克隆（介面與原 F5-TTS 模組完全相同）。
+
+    參數:
+        text              : 要合成的文字
+        speaker_audio_path: 說話者參考音訊（可為影片或音訊檔案）
+        output_path       : 輸出 WAV 路徑（預設 output.wav）
+        language          : 語言（中文 UI 名稱，如「英文」「中文」「德文」等）
+
+    回傳:
+        output_path: 輸出音訊檔案路徑
+    """
+    print("🎤 Qwen3-TTS 語音克隆開始…")
+    print(f"📝 文本: {text[:100]}{'...' if len(text) > 100 else ''}")
+    print(f"🔊 參考音訊: {speaker_audio_path}")
+    print(f"🌐 語言: {language}")
+
+    # 確保輸出目錄存在
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    # 語言名稱轉換
+    qwen_lang = LANGUAGE_MAP.get(language, "English")
+    print(f"🌐 Qwen3-TTS 語言碼: {qwen_lang}")
+
+    # 準備參考音訊（統一重採樣至 22050 Hz mono WAV）
+    tmp_dir = "temp"
+    os.makedirs(tmp_dir, exist_ok=True)
+    file_ext = os.path.splitext(speaker_audio_path)[1].lower()
+
+    if file_ext in (".mp4", ".avi", ".mov", ".mkv", ".webm"):
+        ref_wav = os.path.join(tmp_dir, "qwen3_ref_audio.wav")
+        ref_wav = extract_audio_from_video(speaker_audio_path, ref_wav, sample_rate=22050)
+    else:
+        ref_wav = os.path.join(tmp_dir, "qwen3_ref_resampled.wav")
+        try:
+            cmd = f'ffmpeg -y -i "{speaker_audio_path}" -ar 22050 -ac 1 "{ref_wav}"'
+            subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError:
+            ref_wav = speaker_audio_path  # fallback
+
+    print(f"✅ 參考音訊就緒: {ref_wav}")
+
+    try:
+        model = get_qwen3tts_model()
+        print("🔄 正在合成語音…")
+
+        # x_vector_only_mode=True 省略 ref_text 轉錄
+        # 品質略低於提供轉錄文字，但無需額外 ASR 步驟
+        wavs, sr = model.generate_voice_clone(
+            text=text,
+            language=qwen_lang,
+            ref_audio=ref_wav,
+            ref_text="",
+            x_vector_only_mode=True,
+        )
+
+        sf.write(output_path, wavs[0], sr)
+        print(f"✅ Qwen3-TTS 語音克隆完成: {output_path}")
+        return output_path
+
+    except ImportError:
+        raise
+    except Exception as e:
+        print(f"❌ Qwen3-TTS 語音合成失敗: {e}")
+        import traceback
+        traceback.print_exc()
+        raise Exception(f"Qwen3-TTS 語音合成失敗: {e}")
+
+
+# ════════════════════════════════════════════════════════
+#  快速測試入口：python f5ttsv.py --ref <audio> --text "..."
+# ════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    # 測試用例
-    text = "這是一個測試文字，用於測試 F5-TTS 語音克隆功能。"
-    speaker_path = "temp/test_speaker.wav"
-    
-    if os.path.exists(speaker_path):
-        f5ttsv(text, speaker_path, "temp/f5_output.wav", "中文")
-    else:
-        print("測試音頻文件不存在，請提供有效的參考音頻")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Qwen3-TTS 語音克隆測試")
+    parser.add_argument("--text", default="這是一個測試文字，用於測試 Qwen3-TTS 語音克隆功能。")
+    parser.add_argument("--ref",  default="temp/test_speaker.wav", help="參考音訊路徑")
+    parser.add_argument("--out",  default="temp/qwen3_output.wav",  help="輸出路徑")
+    parser.add_argument("--lang", default="中文",                    help="語言（中文 UI 名稱）")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.ref):
+        print(f"❌ 參考音訊不存在: {args.ref}")
+        print("請提供有效的參考音訊路徑後重試。")
+        sys.exit(1)
+
+    result = f5ttsv(args.text, args.ref, args.out, args.lang)
+    print(f"\n🎉 輸出音訊: {result}")

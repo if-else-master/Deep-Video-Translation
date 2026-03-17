@@ -392,11 +392,18 @@
     <div class="container">
         <div class="header">
             <h1>AI 影片深度翻譯服務</h1>
-            <p>支援 4 種語言：日文 • 英文 • 中文 • 德文</p>            
+            <p>支援 8 種語言：英文 • 中文 • 德文 • 法文 • 印地文 • 韓文 • 俄文 • 西班牙文</p>            
         </div>
 
         <div class="content">
             <form id="translationForm">
+                <!-- Email 輸入 -->
+                <div class="form-group">
+                    <label for="userEmail">Email 地址 <span style="color: #e53935; font-size: 0.85em;">（必填）</span></label>
+                    <input type="email" id="userEmail" name="email" placeholder="請輸入您的 @tschool.tp.edu.tw Email" required style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;">
+                    <small style="color: #666; margin-top: 5px; display: block;">限 @tschool.tp.edu.tw 或授權 Email 使用（處理完成後會發送通知）</small>
+                </div>
+
                 <!-- API 提供者選擇 -->
                 <div class="form-group">
                     <label for="apiProvider">翻譯 API 提供者</label>
@@ -506,28 +513,32 @@
                     <div class="form-group">
                         <label for="voiceLanguage">語音翻譯語言</label>
                         <select id="voiceLanguage" name="voice_language" required>
-                            <option value="日文" selected>日文 (Japanese)</option>
-                            <option value="英文">英文 (English)</option>
+                            <option value="英文" selected>英文 (English)</option>
                             <option value="中文">中文 (Chinese)</option>
+                            <option value="日文">日文 (Japanese)</option>
+                            <option value="韓文">韓文 (Korean)</option>
                             <option value="德文">德文 (German)</option>
                             <option value="法文">法文 (French)</option>
                             <option value="俄文">俄文 (Russian)</option>
-                            <option value="義大利文">義大利文 (Italian)</option>
+                            <option value="葡萄牙文">葡萄牙文 (Portuguese)</option>
                             <option value="西班牙文">西班牙文 (Spanish)</option>
+                            <option value="義大利文">義大利文 (Italian)</option>
                         </select>
                     </div>
 
                     <div class="form-group">
                         <label for="slideLanguage">投影片翻譯語言</label>
                         <select id="slideLanguage" name="slide_language">
-                            <option value="Japanese" selected>Japanese (日文)</option>
-                            <option value="English">English (英文)</option>
+                            <option value="English" selected>English (英文)</option>
                             <option value="Chinese">Chinese (中文)</option>
+                            <option value="Japanese">Japanese (日文)</option>
+                            <option value="Korean">Korean (韓文)</option>
                             <option value="German">German (德文)</option>
                             <option value="French">French (法文)</option>
                             <option value="Russian">Russian (俄文)</option>
-                            <option value="Italian">Italian (義大利文)</option>
+                            <option value="Portuguese">Portuguese (葡萄牙文)</option>
                             <option value="Spanish">Spanish (西班牙文)</option>
+                            <option value="Italian">Italian (義大利文)</option>
                         </select>
                     </div>
                 </div>
@@ -848,6 +859,7 @@
             // 準備表單數據
             const formData = new FormData();
             formData.append('video', videoFile.files[0]);
+            formData.append('email', document.getElementById('userEmail').value.trim());
             formData.append('api_key', document.getElementById('apiKey').value);
             formData.append('voice_language', document.getElementById('voiceLanguage').value);
             formData.append('slide_language', document.getElementById('slideLanguage').value);

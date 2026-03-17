@@ -167,3 +167,6 @@ tomli
 
 # Whisper for Speech-to-Text
 openai-whisper==20250625
+
+# Qwen3-TTS — replaces F5-TTS for voice cloning (supports 10 languages)
+qwen-tts

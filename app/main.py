@@ -28,9 +28,12 @@ from PIL import Image, ImageDraw, ImageFont
 import requests 
 import re
 import subprocess
+import threading
+import time
+import ollama
 
 # Flask 相關
-from flask import Flask, request, jsonify, render_template, Response, send_file
+from flask import Flask, request, jsonify, render_template, Response, send_file, session
 from werkzeug.utils import secure_filename
 
 # 排隊系統相關
@@ -41,6 +44,7 @@ from video_utils import get_video_duration, format_duration
 
 # 創建 Flask 應用
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))  # session 加密金鑰
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['UPLOAD_FOLDER'] = 'temp/uploads'
 app.config['OUTPUT_STORAGE'] = 'output_videos'  # 本地儲存完成的影片
@@ -49,6 +53,9 @@ app.config['OUTPUT_STORAGE'] = 'output_videos'  # 本地儲存完成的影片
 tasks = {}
 task_logs = {}
 task_progress = {}
+
+# 服務暫停旗標（True = 拒絕新上傳；已排隊/處理中任務不受影響）
+service_paused = False
 
 # 初始化排隊系統
 queue_manager = QueueManager()
@@ -180,19 +187,16 @@ class DeepVideoTranslationApp:
             # 轉換為灰階
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # 使用多種參數嘗試檢測
-            # 第一次嘗試：標準參數
-            faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
+            # 使用 Haar cascade 人臉偵測：兩輪即可
+            # 第一輪：標準參數（高精度），minSize=(40,40) 排除過小雜訊
+            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(40, 40))
             if len(faces) > 0:
                 return True
-                
-            # 第二次嘗試：更寬鬆的參數
-            faces = self.face_cascade.detectMultiScale(gray, 1.05, 3, minSize=(30, 30))
-            if len(faces) > 0:
-                return True
-                
-            # 第三次嘗試：非常寬鬆的參數
-            faces = self.face_cascade.detectMultiScale(gray, 1.3, 2, minSize=(20, 20))
+
+            # 第二輪：稍寬鬆，但 minNeighbors 保持 4 以避免誤判簡報文字
+            # 注意：嚴禁使用 minNeighbors=2 的第三輪，那會把簡報文字誤判為人臉，
+            # 導致所有簡報幀都被歸類為人臉段落，讓簡報偵測完全失效。
+            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=4, minSize=(35, 35))
             return len(faces) > 0
             
         except Exception as e:
@@ -208,16 +212,14 @@ class DeepVideoTranslationApp:
         if has_faces:
             return False  # 有人臉，不是簡報
         
-        # 使用簡單的方法檢測是否有文字內容
+        # 使用邊緣密度判斷是否含有文字/內容（典型簡報特徵）
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # 計算圖像的對比度和邊緣
         edges = cv2.Canny(gray, 50, 150)
         edge_ratio = np.sum(edges > 0) / edges.size
-        
-        # 如果邊緣比例在合理範圍內，可能是簡報
-        # 太少邊緣可能是空白，太多邊緣可能是雜亂背景
-        return 0.01 < edge_ratio < 0.3
+
+        # 放寬上限至 0.7：高文字密度的簡報邊緣比例可達 0.5 以上
+        # 下限 0.01 排除純黑/純白空白幀
+        return 0.01 < edge_ratio < 0.7
 
     def log(self, message, level='info'):
         """記錄日誌"""
@@ -231,9 +233,8 @@ class DeepVideoTranslationApp:
         if self.task:
             self.task.update_progress(progress, status)
 
-    # API 翻譯功能
-    # 支援的 API: Gemini, OpenAI, Claude, 本地 LLM
-    
+    # API 翻譯功能 (使用 Ollama llama4)
+
     def get_translation_prompt(self, target_lang):
         """獲取翻譯提示詞"""
         lang_prompts = {
@@ -287,166 +288,36 @@ class DeepVideoTranslationApp:
         return clean_result
     
     def translate(self, text, target_lang="Japanese"):
-        """統一翻譯接口 - 根據 api_provider 選擇對應的翻譯 API"""
-        api_provider = getattr(self, 'api_provider', 'gemini')
-        
-        if api_provider == 'gemini':
-            return self.translate_with_gemini(text, target_lang)
-        elif api_provider == 'openai':
-            return self.translate_with_openai(text, target_lang)
-        elif api_provider == 'claude':
-            return self.translate_with_claude(text, target_lang)
-        elif api_provider == 'local_llm':
-            return self.translate_with_local_llm(text, target_lang)
-        else:
-            print(f"⚠️ 未知的 API 提供者: {api_provider}，使用 Gemini 作為默認")
-            return self.translate_with_gemini(text, target_lang)
-    
-    def translate_with_gemini(self, text, target_lang="Japanese"):
-        """使用 Gemini API 翻譯文字"""
-        api_key = self.api_key
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-        headers = {"Content-Type": "application/json"}
-        
+        """使用 Ollama llama4 翻譯文字"""
         prompt = self.get_translation_prompt(target_lang) + text
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}]
-        }
-        
+        print(f"🤖 [Ollama llama4] 正在翻譯至 {target_lang}，請稍候（llama4 模型較大，需要數十秒）...")
+
+        # 背景進度指示器
+        _stop_spinner = threading.Event()
+        def _spinner():
+            dots = 0
+            while not _stop_spinner.is_set():
+                time.sleep(10)
+                if not _stop_spinner.is_set():
+                    dots += 1
+                    print(f"   ⏳ Ollama 思考中... ({dots * 10}s)")
+        spinner_thread = threading.Thread(target=_spinner, daemon=True)
+        spinner_thread.start()
+
         try:
-            r = requests.post(url, headers=headers, json=payload)
-            if r.status_code == 200:
-                translated = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                return self.clean_translation_result(translated)
-            else:
-                print("Gemini 翻譯失敗:", r.text)
-                return text
+            client = ollama.Client(timeout=300)  # 5 分鐘超時
+            response = client.chat(
+                model='llama4:latest',
+                messages=[{'role': 'user', 'content': prompt}],
+            )
+            result = response.message.content.strip()
+            print(f"   ✅ Ollama 翻譯完成")
+            return self.clean_translation_result(result)
         except Exception as e:
-            print(f"Gemini 翻譯錯誤: {e}")
+            print(f"❌ Ollama 翻譯失敗: {e}")
             return text
-    
-    def translate_with_openai(self, text, target_lang="Japanese"):
-        """使用 OpenAI API 翻譯文字"""
-        api_key = self.api_key
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        prompt = self.get_translation_prompt(target_lang) + text
-        payload = {
-            "model": "gpt-4o-mini",  # 使用經濟實惠的模型
-            "messages": [
-                {"role": "system", "content": "You are a professional translator. Only output the translation, nothing else."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.3,
-            "max_tokens": 2000
-        }
-        
-        try:
-            r = requests.post(url, headers=headers, json=payload)
-            if r.status_code == 200:
-                translated = r.json()["choices"][0]["message"]["content"]
-                return self.clean_translation_result(translated)
-            else:
-                print("OpenAI 翻譯失敗:", r.text)
-                return text
-        except Exception as e:
-            print(f"OpenAI 翻譯錯誤: {e}")
-            return text
-    
-    def translate_with_claude(self, text, target_lang="Japanese"):
-        """使用 Claude API 翻譯文字"""
-        api_key = self.api_key
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01"
-        }
-        
-        prompt = self.get_translation_prompt(target_lang) + text
-        payload = {
-            "model": "claude-3-haiku-20240307",  # 使用經濟實惠的模型
-            "max_tokens": 2000,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
-        }
-        
-        try:
-            r = requests.post(url, headers=headers, json=payload)
-            if r.status_code == 200:
-                translated = r.json()["content"][0]["text"]
-                return self.clean_translation_result(translated)
-            else:
-                print("Claude 翻譯失敗:", r.text)
-                return text
-        except Exception as e:
-            print(f"Claude 翻譯錯誤: {e}")
-            return text
-    
-    def translate_with_local_llm(self, text, target_lang="Japanese"):
-        """使用本地 LLM API 翻譯文字（兼容 Ollama、LM Studio 等）"""
-        # 本地 LLM 端點（默認使用 Ollama 的格式）
-        local_url = getattr(self, 'local_llm_url', 'http://localhost:11434/api/generate')
-        local_model = getattr(self, 'local_llm_model', 'llama3.2')
-        
-        prompt = self.get_translation_prompt(target_lang) + text
-        
-        # 嘗試 Ollama 格式
-        try:
-            payload = {
-                "model": local_model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.3
-                }
-            }
-            
-            r = requests.post(local_url, json=payload, timeout=60)
-            if r.status_code == 200:
-                response_data = r.json()
-                # Ollama 格式
-                if "response" in response_data:
-                    translated = response_data["response"]
-                    return self.clean_translation_result(translated)
-                # OpenAI 兼容格式 (LM Studio)
-                elif "choices" in response_data:
-                    translated = response_data["choices"][0]["message"]["content"]
-                    return self.clean_translation_result(translated)
-            else:
-                print(f"本地 LLM 翻譯失敗 (狀態碼 {r.status_code}): {r.text}")
-        except requests.exceptions.ConnectionError:
-            print("⚠️ 無法連接到本地 LLM 服務，請確認 Ollama 或 LM Studio 已啟動")
-        except Exception as e:
-            print(f"本地 LLM 翻譯錯誤: {e}")
-        
-        # 嘗試 OpenAI 兼容格式 (LM Studio 默認端口)
-        try:
-            lm_studio_url = getattr(self, 'local_llm_url', 'http://localhost:1234/v1/chat/completions')
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "model": local_model,
-                "messages": [
-                    {"role": "system", "content": "You are a professional translator. Only output the translation, nothing else."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.3
-            }
-            
-            r = requests.post(lm_studio_url, headers=headers, json=payload, timeout=60)
-            if r.status_code == 200:
-                translated = r.json()["choices"][0]["message"]["content"]
-                return self.clean_translation_result(translated)
-        except Exception as e:
-            print(f"LM Studio 格式也失敗: {e}")
-        
-        print("⚠️ 本地 LLM 翻譯失敗，返回原文")
-        return text
+        finally:
+            _stop_spinner.set()
 
     def remove_text_with_inpainting(self, img, boxes):
         """根據 OCR 回傳的 boxes 四點座標，製作 mask 並 inpaint"""
@@ -890,7 +761,11 @@ class DeepVideoTranslationApp:
         os.makedirs(face_dir, exist_ok=True)
         os.makedirs(ppt_dir, exist_ok=True)
         
+        if not os.path.exists(video_path):
+            raise ValueError(f"影片檔案不存在，可能已被刪除或路徑錯誤：{video_path}")
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"無法開啟影片檔案，請確認路徑正確且檔案未損毀：{video_path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -932,7 +807,9 @@ class DeepVideoTranslationApp:
                 elif is_slide:
                     segment_type = "slide"
                 else:
-                    segment_type = "unknown"
+                    # 邊緣比例在閾值外（過低=空白，過高=複雜背景），
+                    # 無臉且內容不明確 → 當作簡報處理，避免靜默丟棄段落
+                    segment_type = "slide"
                 
                 # 檢查是否需要開始新段落
                 if current_segment is None:
@@ -1219,7 +1096,9 @@ class DeepVideoTranslationApp:
                 output_path = os.path.join(ppt_dir, filename)
                 slide_count += 1
             else:
-                continue  # 跳過未知類型
+                # 'unknown' — 保留舊行為但記錄警告（正常情況不應出現）
+                self.log(f"⚠️  跳過未知類型段落（幀 {segment.get('start_frame')}–{segment.get('end_frame')}）")
+                continue
             
             # 提取段落（包含音視頻）
             self.extract_video_segment(cap, start_frame, end_frame, output_path, fps, width, height, video_path)
@@ -1271,11 +1150,11 @@ class DeepVideoTranslationApp:
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
                 self.log(f"  🎵 正在處理音頻...")
-                api_key = self.api_key
-                api_provider = getattr(self, 'api_provider', 'gemini')
+                # 重要：輸出目標語言，便於調試
+                print(f"  🌐 目標語言: {language}")
                 
                 try:
-                    translated_text = voice(input_path, api_key, language, api_provider)
+                    translated_text = voice(input_path, language)
                 except Exception as audio_error:
                     print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
                     translated_text = ""
@@ -1289,7 +1168,7 @@ class DeepVideoTranslationApp:
                     processed_segments.append(processed_path)
                     continue
                 
-                print(f"  📝 翻譯結果: {translated_text}")
+                print(f"  📝 翻譯結果 ({language}): {translated_text[:100]}{'...' if len(translated_text) > 100 else ''}")
                 
                 # 2. 語音克隆（使用段落文件作為參考音頻）
                 print(f"  🔊 正在進行語音克隆...")
@@ -1300,6 +1179,9 @@ class DeepVideoTranslationApp:
                 try:
                     # 使用 F5-TTS 引擎進行語音克隆
                     print(f"  🎤 使用 F5-TTS 引擎進行語音克隆...")
+                    print(f"  📊 語音合成參數: 文本長度={len(translated_text)}, 語言={language}")
+                    print(f"  📝 傳入 F5-TTS 的文本內容: {translated_text}")
+                    print(f"  🔍 文本前 200 字符: {translated_text[:200]}...")
                     audio_path = f5ttsv(translated_text, input_path, temp_audio, language)
                 except Exception as tts_error:
                     print(f"  ⚠️ 語音克隆失敗: {tts_error}")
@@ -1427,11 +1309,8 @@ class DeepVideoTranslationApp:
             try:
                 # 1. 語音轉文字並翻譯（直接使用段落文件，因為已包含音頻）
                 self.log(f"  🎵 正在處理音頻...")
-                api_key = self.api_key
-                api_provider = getattr(self, 'api_provider', 'gemini')
-                
                 try:
-                    translated_text = voice(input_path, api_key, language, api_provider)
+                    translated_text = voice(input_path, language)
                 except Exception as audio_error:
                     print(f"  ⚠️ 音頻轉文字失敗: {audio_error}")
                     translated_text = ""
@@ -2235,28 +2114,19 @@ class DeepVideoTranslationApp:
         
         print(f"  ✅ 逐個合併完成")
 
-    def process(self, input_path, output_path, api_key, language, slide_language, 
+    def process(self, input_path, output_path, language, slide_language,
                 enable_slide_translation, min_segment_duration, hash_threshold,
-                tts_engine='xtts', api_provider='gemini', local_llm_url='http://localhost:11434/api/generate',
-                local_llm_model='llama3.2'):
+                tts_engine='f5tts'):
         """處理影片的主要方法"""
         # 設置參數
-        self.api_key = api_key
         self.min_segment_duration = min_segment_duration
         self.hash_threshold = hash_threshold
-        
-        # 新增：TTS 引擎和 API 提供者設置
         self.tts_engine = tts_engine
-        self.api_provider = api_provider
-        self.local_llm_url = local_llm_url
-        self.local_llm_model = local_llm_model
-        
-        self.log(f"🔧 配置：TTS 引擎=F5-TTS (固定), API 提供者={api_provider}")
-        if api_provider == 'local_llm':
-            self.log(f"🔧 本地 LLM：URL={local_llm_url}, 模型={local_llm_model}")
-        
+
+        self.log("🔧 配置：TTS 引擎=F5-TTS, 翻譯引擎=Ollama llama4")
+
         # 驗證輸入
-        if not all([api_key, input_path, output_path]):
+        if not all([input_path, output_path]):
             raise ValueError("請填寫所有必要欄位")
             
         if not input_path.lower().endswith('.mp4'):
@@ -2377,6 +2247,32 @@ def get_home_dir():
     return jsonify({'home_dir': home_dir})
 
 
+@app.route('/service/status')
+def service_status():
+    """公開端點：回傳目前服務是否暫停"""
+    return jsonify({'paused': service_paused})
+
+
+
+@app.route('/service/deadline')
+def service_deadline_public():
+    """公開端點：回傳服務截止時間與是否已過期"""
+    deadline_str = queue_manager.get_service_deadline()
+    expired = queue_manager.is_service_expired()
+    return jsonify({'deadline': deadline_str, 'expired': expired})
+
+
+@app.route('/admin/api/service/toggle', methods=['POST'])
+def admin_service_toggle():
+    """管理者切換服務暫停狀態"""
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    global service_paused
+    service_paused = not service_paused
+    state = '已暫停' if service_paused else '服務中'
+    return jsonify({'success': True, 'paused': service_paused, 'message': f'服務狀態已切換為：{state}'})
+
+
 @app.route('/process', methods=['POST'])
 def process_video():
     """處理影片的 API 端點（使用排隊系統）"""
@@ -2390,6 +2286,14 @@ def process_video():
         if video_file.filename == '':
             return jsonify({'error': '沒有選擇影片'}), 400
         
+        # 服務暫停檢查（管理者可在後台暫停接受新任務）
+        if service_paused:
+            return jsonify({'error': '⚠️ 服務目前暫停接受新任務，請稍後再試。已在佇列中的任務將繼續處理。'}), 503
+
+        # 服務截止日檢查
+        if queue_manager.is_service_expired():
+            return jsonify({'error': '⚠️ 此服務已於截止日期結束，不再接受新的影片上傳。感謝您的體驗！'}), 403
+
         # 獲取 email（必須）
         email = request.form.get('email', '').strip()
         if not email:
@@ -2402,51 +2306,60 @@ def process_video():
         
         # Email 白名單驗證
         allowed_domain = 'tschool.tp.edu.tw'
-        special_allowed_email = 'rayc57429@gmail.com'
-        unlimited_email = '11230213@tschool.tp.edu.tw'
-        
-        # 檢查是否為允許的 email
+        # 無限制使用者列表（不受冷卻期限制）
+        unlimited_emails = ['rayc57429@gmail.com']
+
+        # 優先查詢動態白名單（管理者透過後台加入的 Email）
+        # 白名單 Email 免除網域限制與冷卻期限制
+        is_db_whitelisted = queue_manager._is_whitelisted(email.lower())
+
+        # 檢查是否為允許的 email（白名單、無限制列表、或允許網域）
         email_domain = email.split('@')[1] if '@' in email else ''
-        
-        if email != special_allowed_email and email_domain != allowed_domain:
+
+        if not is_db_whitelisted and email not in unlimited_emails and email_domain != allowed_domain:
             return jsonify({'error': f'僅限 @{allowed_domain} 或特定授權 Email 使用此服務'}), 403
-        
-        # 檢查 email 冷卻期（無限制白名單除外）
-        if email == unlimited_email:
-            # 無限制使用者，跳過冷卻期檢查
+
+        # 檢查 email 冷卻期（無限制列表與白名單均跳過）
+        if email in unlimited_emails or is_db_whitelisted:
+            # 免冷卻使用者，跳過冷卻期檢查
             pass
         else:
             available, remaining = queue_manager.check_email_cooldown(email)
             if not available:
                 hours = int(remaining // 3600)
-                minutes = int((remaining % 3600) // 60)
+                minutes = int((remaining % 3600) // 180)
                 days = hours // 24
                 hours = hours % 24
-                
+
                 if days > 0:
                     cooldown_msg = f"此 Email 地址需等待 {days} 天 {hours} 小時後才能再次使用"
                 else:
                     cooldown_msg = f"此 Email 地址需等待 {hours} 小時 {minutes} 分鐘後才能再次使用"
-                
+
                 return jsonify({'error': cooldown_msg}), 429
         
         # 獲取參數
-        api_key = request.form.get('api_key')
-        voice_language = request.form.get('voice_language', '日文')
-        slide_language = request.form.get('slide_language', 'Japanese')
+        voice_language = request.form.get('voice_language', '英文')
+        slide_language = request.form.get('slide_language', 'English')
         enable_slide_translation = request.form.get('enable_slide_translation', 'true').lower() == 'true'
         min_segment_duration = float(request.form.get('min_segment_duration', 2))
         hash_threshold = int(request.form.get('hash_threshold', 5))
         
-        # 新增：TTS 引擎和 API 提供者參數
+        # TTS 引擎參數
         tts_engine = request.form.get('tts_engine', 'f5tts')
-        api_provider = request.form.get('api_provider', 'gemini')
-        local_llm_url = request.form.get('local_llm_url', 'http://localhost:11434/api/generate')
-        local_llm_model = request.form.get('local_llm_model', 'llama3.2')
         
-        # 保存上傳的影片
+        # 先產生唯一任務 ID，用於讓上傳檔名具備唯一性，避免同名檔案互相覆蓋
+        task_id = str(uuid.uuid4())
+
+        # 保存上傳的影片（加上 task_id 前綴確保唯一）
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        filename = secure_filename(video_file.filename)
+        original_filename = secure_filename(video_file.filename)
+        # secure_filename 會剔除中文字元，可能導致檔名僅剩副檔名或空字串，補上安全回退值
+        name_part, ext_part = os.path.splitext(original_filename)
+        if not name_part:
+            name_part = 'upload'
+        original_filename = name_part + (ext_part if ext_part else '.mp4')
+        filename = f"{task_id[:8]}_{original_filename}"
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         video_file.save(input_path)
         
@@ -2456,7 +2369,7 @@ def process_video():
         if video_duration is None:
             # 無法檢測時長，給個警告但繼續
             print(f"⚠️  無法檢測影片時長: {filename}")
-        elif video_duration > 60:  # 1 分鐘
+        elif video_duration > 180:  # 3 分鐘
             # 刪除上傳的文件
             try:
                 os.remove(input_path)
@@ -2465,7 +2378,7 @@ def process_video():
             
             duration_str = format_duration(video_duration)
             return jsonify({
-                'error': f'影片時長 {duration_str} 超過限制（最多 1 分鐘）'
+                'error': f'影片時長 {duration_str} 超過限制（最多 3 分鐘）'
             }), 400
         
         # 設置輸出路徑 - 強制使用 audio_files 目錄
@@ -2484,23 +2397,18 @@ def process_video():
         except Exception as e:
             return jsonify({'error': f'無法創建輸出目錄：{str(e)}'}), 400
         
-        # 創建任務 ID
-        task_id = str(uuid.uuid4())
-        
+        # task_id 已在上方產生，此處不重複建立
+
         # 準備參數
         params = {
             'input_path': input_path,
             'output_path': output_path,
-            'api_key': api_key,
             'voice_language': voice_language,
             'slide_language': slide_language,
             'enable_slide_translation': enable_slide_translation,
             'min_segment_duration': min_segment_duration,
             'hash_threshold': hash_threshold,
             'tts_engine': tts_engine,
-            'api_provider': api_provider,
-            'local_llm_url': local_llm_url,
-            'local_llm_model': local_llm_model
         }
         
         # 添加任務到隊列
@@ -2572,16 +2480,12 @@ def process_video():
         params = {
             'input_path': input_path,
             'output_path': output_path,
-            'api_key': api_key,
             'voice_language': voice_language,
             'slide_language': slide_language,
             'enable_slide_translation': enable_slide_translation,
             'min_segment_duration': min_segment_duration,
             'hash_threshold': hash_threshold,
             'tts_engine': tts_engine,
-            'api_provider': api_provider,
-            'local_llm_url': local_llm_url,
-            'local_llm_model': local_llm_model
         }
         
         task = VideoProcessingTask(task_id, params)
@@ -2636,94 +2540,320 @@ def queue_stats():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/queue')
+def queue_page():
+    """排隊顯示介面"""
+    return render_template('queue.html')
+
+
+@app.route('/queue/all')
+def queue_all():
+    """獲取所有任務資料供排隊頁面顯示"""
+    try:
+        data = queue_manager.get_all_tasks()
+        stats = queue_manager.get_queue_stats()
+        return jsonify({'tasks': data, 'stats': stats})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ── Admin routes ──────────────────────────────────────────────────────────────
+
+ADMIN_SECRET = 'rayadminifelsemaster'
+
+
+def _check_admin_key(req):
+    """驗證管理者身份：接受 session 或請求中的 key（API 內部呼叫用）"""
+    # 優先採用 session（由 /admin/auth 登入後設置）
+    if session.get('admin_authed'):
+        return True
+    # 向下相容：API 呼叫時可帶 X-Admin-Key header 或 key 參數
+    key = (req.headers.get('X-Admin-Key')
+           or req.args.get('key')
+           or (req.get_json(silent=True) or {}).get('key', '')
+           or req.form.get('key', ''))
+    return key == ADMIN_SECRET
+
+
+@app.route('/admin/auth', methods=['POST'])
+def admin_auth():
+    """管理者登入端點：驗證密碼後設置 session，密碼不存於前端 JS"""
+    data = request.get_json(silent=True) or {}
+    key = data.get('key', '').strip()
+    if key == ADMIN_SECRET:
+        session['admin_authed'] = True
+        session.permanent = False
+        return jsonify({'ok': True})
+    return jsonify({'ok': False, 'error': '密碼錯誤'}), 403
+
+
+@app.route('/admin/logout', methods=['POST'])
+def admin_logout():
+    session.pop('admin_authed', None)
+    return jsonify({'ok': True})
+
+
+@app.route('/admin')
+def admin_page():
+    # 接受 session 驗證或一次性 key 參數（管理者首次跳轉由 /admin/auth 帶入）
+    if not session.get('admin_authed'):
+        return '<h2 style="font-family:sans-serif;text-align:center;margin-top:20%">403 Forbidden</h2>', 403
+    return render_template('admin.html')
+
+
+@app.route('/admin/api/tasks')
+def admin_api_tasks():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    tasks_data = queue_manager.admin_get_all_tasks(limit=200)
+    stats = queue_manager.get_queue_stats()
+    wl = queue_manager.get_whitelist()
+    bl = queue_manager.get_blacklist()
+    cl = queue_manager.get_cooldown_list()
+    return jsonify({'tasks': tasks_data, 'stats': stats, 'whitelist': wl, 'blacklist': bl, 'cooldowns': cl})
+
+
+@app.route('/admin/api/cancel/<task_id>', methods=['POST'])
+def admin_cancel_task(task_id):
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    ok = queue_manager.admin_cancel_task(task_id)
+    return jsonify({'success': ok, 'message': '已取消' if ok else '找不到任務或狀態不可取消'})
+
+
+@app.route('/admin/api/cancel_all', methods=['POST'])
+def admin_cancel_all():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    include_processing = data.get('include_processing', True)
+    count = queue_manager.admin_cancel_all(include_processing=include_processing)
+    return jsonify({'success': True, 'cancelled': count, 'message': f'已取消 {count} 個任務'})
+
+
+@app.route('/admin/api/whitelist', methods=['GET'])
+def admin_get_whitelist():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    return jsonify(queue_manager.get_whitelist())
+
+
+@app.route('/admin/api/whitelist/add', methods=['POST'])
+def admin_add_whitelist():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    email = data.get('email', '').strip()
+    note = data.get('note', '')
+    if not email:
+        return jsonify({'error': '請提供 Email'}), 400
+    ok, msg = queue_manager.add_to_whitelist(email, note)
+    return jsonify({'success': ok, 'message': msg})
+
+
+@app.route('/admin/api/whitelist/remove', methods=['POST'])
+def admin_remove_whitelist():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    email = data.get('email', '').strip()
+    ok = queue_manager.remove_from_whitelist(email)
+    return jsonify({'success': ok, 'message': '已移除' if ok else '找不到此 Email'})
+
+
+@app.route('/admin/api/blacklist/add', methods=['POST'])
+def admin_add_blacklist():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    email = data.get('email', '').strip()
+    reason = data.get('reason', '')
+    if not email:
+        return jsonify({'error': '請提供 Email'}), 400
+    ok, msg = queue_manager.add_to_blacklist(email, reason)
+    return jsonify({'success': ok, 'message': msg})
+
+
+@app.route('/admin/api/blacklist/remove', methods=['POST'])
+def admin_remove_blacklist():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    email = data.get('email', '').strip()
+    ok = queue_manager.remove_from_blacklist(email)
+    return jsonify({'success': ok, 'message': '已移除' if ok else '找不到此 Email'})
+
+
+@app.route('/admin/api/clear_history', methods=['POST'])
+def admin_clear_history():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    count = queue_manager.admin_clear_history()
+    return jsonify({'success': True, 'deleted': count, 'message': f'已清除 {count} 筆歷史記錄'})
+
+
+@app.route('/admin/api/deadline', methods=['GET', 'POST'])
+def admin_deadline():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    if request.method == 'GET':
+        deadline_str = queue_manager.get_service_deadline()
+        expired = queue_manager.is_service_expired()
+        return jsonify({'deadline': deadline_str, 'expired': expired})
+    # POST — set deadline
+    data = request.get_json(silent=True) or {}
+    deadline_str = data.get('deadline', '').strip()
+    if not deadline_str:
+        # allow clearing deadline
+        queue_manager.set_service_deadline('')
+        return jsonify({'success': True, 'message': '已清除截止日期（不限時間）'})
+    try:
+        # validate ISO format
+        from datetime import datetime as _dt
+        _dt.fromisoformat(deadline_str)
+    except ValueError:
+        return jsonify({'error': '日期格式不正確，請使用 YYYY-MM-DD HH:MM:SS'}), 400
+    queue_manager.set_service_deadline(deadline_str)
+    return jsonify({'success': True, 'message': f'服務截止時間已設定為 {deadline_str}'})
+
+
+@app.route('/admin/api/cooldowns')
+def admin_get_cooldowns():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    return jsonify(queue_manager.get_cooldown_list())
+
+
+@app.route('/admin/api/cooldown/remove', methods=['POST'])
+def admin_remove_cooldown():
+    if not _check_admin_key(request):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    email = data.get('email', '').strip()
+    if not email:
+        return jsonify({'error': '請提供 Email'}), 400
+    ok = queue_manager.remove_cooldown(email)
+    return jsonify({'success': ok, 'message': f'已取消 {email} 的冷卻' if ok else '找不到此 Email 的冷卻記錄'})
+
+
 @app.route('/progress/<task_id>')
 def progress(task_id):
     """使用 Server-Sent Events 推送進度和日誌"""
     def generate():
+        # 先檢查舊式 in-memory 任務
         task = tasks.get(task_id)
-        if not task:
-            data = {'error': '任務不存在'}
-            yield f"data: {json.dumps(data)}\n\n"
+        if task:
+            # 舊式任務處理（in-memory task object）
+            initial_data = {
+                'log': '⏳ 已連接到服務器，等待任務開始...',
+                'progress': 0,
+                'status': 'pending'
+            }
+            yield f"data: {json.dumps(initial_data)}\n\n"
+
+            last_progress = -1
+            heartbeat_counter = 0
+
+            while True:
+                try:
+                    while not task.log_queue.empty():
+                        log_entry = task.log_queue.get_nowait()
+                        data = {
+                            'log': log_entry['message'],
+                            'progress': task.progress,
+                            'status': task.status
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+
+                    if task.progress != last_progress:
+                        last_progress = task.progress
+                        yield f"data: {json.dumps({'progress': task.progress, 'status': task.status})}\n\n"
+
+                    if task.status == 'completed':
+                        yield f"data: {json.dumps({'progress': 100, 'status': 'completed', 'output_url': '/download/' + task_id, 'log': '✅ 處理完成！'})}\n\n"
+                        break
+                    elif task.status == 'failed':
+                        err_msg = task.error or '未知錯誤'
+                        yield f"data: {json.dumps({'progress': task.progress, 'status': 'failed', 'error': err_msg, 'log': '❌ 處理失敗: ' + err_msg})}\n\n"
+                        break
+
+                    heartbeat_counter += 1
+                    if heartbeat_counter >= 10:
+                        yield f"data: {json.dumps({'heartbeat': True, 'progress': task.progress, 'status': task.status})}\n\n"
+                        heartbeat_counter = 0
+
+                    time.sleep(0.5)
+
+                except GeneratorExit:
+                    break
+                except Exception as e:
+                    print(f"Progress stream error for task {task_id}: {e}")
+                    break
             return
-        
-        # 立即發送初始連接消息
-        initial_data = {
-            'log': '⏳ 已連接到服務器，等待任務開始...',
-            'progress': 0,
-            'status': 'pending'
-        }
-        yield f"data: {json.dumps(initial_data)}\n\n"
-        
-        last_progress = -1
+
+        # 新式排隊任務：從 queue_manager 取得狀態並輪詢
+        task_info = queue_manager.get_task_info(task_id)
+        if not task_info:
+            yield f"data: {json.dumps({'error': '任務不存在', 'status': 'failed', 'log': '❌ 找不到此任務，請確認 Task ID 正確'})}\n\n"
+            return
+
+        # 發送初始連接成功訊息
+        position = task_info.get('queue_position', 0)
+        initial_msg = f"⏳ 任務已進入隊列（位置第 {position} 位），等待處理中..." if task_info['status'] == 'queued' else "⚙️ 任務處理中，請稍候..."
+        yield f"data: {json.dumps({'log': initial_msg, 'progress': 2, 'status': task_info['status']})}\n\n"
+
         heartbeat_counter = 0
-        
+        last_status = None
+        last_position = -1
+
         while True:
             try:
-                has_update = False
-                
-                # 發送日誌
-                while not task.log_queue.empty():
-                    log_entry = task.log_queue.get_nowait()
-                    data = {
-                        'log': log_entry['message'],
-                        'progress': task.progress,
-                        'status': task.status
-                    }
-                    yield f"data: {json.dumps(data)}\n\n"
-                    has_update = True
-                
-                # 發送進度更新
-                if task.progress != last_progress:
-                    last_progress = task.progress
-                    data = {
-                        'progress': task.progress,
-                        'status': task.status
-                    }
-                    yield f"data: {json.dumps(data)}\n\n"
-                    has_update = True
-                
-                # 如果任務完成或失敗，發送最終消息
-                if task.status == 'completed':
-                    data = {
-                        'progress': 100,
-                        'status': 'completed',
-                        'output_url': f'/download/{task_id}',
-                        'log': '✅ 處理完成！'
-                    }
-                    yield f"data: {json.dumps(data)}\n\n"
+                info = queue_manager.get_task_info(task_id)
+                if not info:
+                    yield f"data: {json.dumps({'status': 'failed', 'error': '任務資料遺失', 'log': '❌ 任務資料遺失'})}\n\n"
                     break
-                elif task.status == 'failed':
-                    data = {
-                        'progress': task.progress,
-                        'status': 'failed',
-                        'error': task.error or '未知錯誤',
-                        'log': f'❌ 處理失敗: {task.error or "未知錯誤"}'
-                    }
-                    yield f"data: {json.dumps(data)}\n\n"
+
+                current_status = info['status']
+
+                if current_status == 'queued':
+                    pos = info.get('queue_position', 0)
+                    if pos != last_position:
+                        last_position = pos
+                        yield f"data: {json.dumps({'progress': 5, 'status': 'queued', 'log': f'⏳ 等待中，目前隊列位置：第 {pos} 位'})}\n\n"
+
+                elif current_status == 'processing':
+                    if last_status != 'processing':
+                        last_status = 'processing'
+                        yield f"data: {json.dumps({'progress': 30, 'status': 'processing', 'log': '🔄 任務開始處理，正在進行語音翻譯和影片合成...'})}\n\n"
+                    else:
+                        # 定期發送心跳讓前端知道任務仍在進行
+                        heartbeat_counter += 1
+                        if heartbeat_counter >= 20:  # 每10秒
+                            yield f"data: {json.dumps({'progress': 50, 'status': 'processing', 'log': '⚙️ 正在翻譯與合成，請耐心等候...'})}\n\n"
+                            heartbeat_counter = 0
+
+                elif current_status == 'completed':
+                    output_path = info.get('output_path', '')
+                    yield f"data: {json.dumps({'progress': 100, 'status': 'completed', 'output_url': f'/download/{task_id}', 'log': f'✅ 處理完成！影片已儲存'})}\n\n"
                     break
-                
-                # 每5秒發送一次心跳，保持連接活躍
-                heartbeat_counter += 1
-                if heartbeat_counter >= 10:  # 0.5s * 10 = 5s
-                    data = {
-                        'heartbeat': True,
-                        'progress': task.progress,
-                        'status': task.status
-                    }
-                    yield f"data: {json.dumps(data)}\n\n"
-                    heartbeat_counter = 0
-                
-                time.sleep(0.5)  # 每0.5秒檢查一次
-                
+
+                elif current_status == 'failed':
+                    error_msg = info.get('error_message', '未知錯誤')
+                    yield f"data: {json.dumps({'status': 'failed', 'error': error_msg, 'log': f'❌ 處理失敗: {error_msg}'})}\n\n"
+                    break
+
+                last_status = current_status
+                time.sleep(0.5)
+
             except GeneratorExit:
-                print(f"Client disconnected from task {task_id}")
+                print(f"Client disconnected from queue task {task_id}")
                 break
             except Exception as e:
-                print(f"Progress stream error for task {task_id}: {e}")
+                print(f"Queue progress stream error for task {task_id}: {e}")
                 import traceback
                 traceback.print_exc()
                 break
-    
+
     response = Response(generate(), mimetype='text/event-stream')
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
@@ -2734,19 +2864,82 @@ def progress(task_id):
 @app.route('/download/<task_id>')
 def download(task_id):
     """下載處理後的影片"""
+    # 先檢查 in-memory 任務
     task = tasks.get(task_id)
-    if not task or not task.output_path:
-        return jsonify({'error': '文件不存在'}), 404
-    
-    if not os.path.exists(task.output_path):
-        return jsonify({'error': '輸出文件不存在'}), 404
-    
+    if task:
+        if not task.output_path:
+            return jsonify({'error': '文件不存在'}), 404
+        if not os.path.exists(task.output_path):
+            return jsonify({'error': '輸出文件不存在'}), 404
+        return send_file(
+            task.output_path,
+            as_attachment=True,
+            download_name=os.path.basename(task.output_path),
+            mimetype='video/mp4'
+        )
+
+    # 從 queue_manager 查找任務輸出路徑
+    task_info = queue_manager.get_task_info(task_id)
+    if not task_info:
+        return jsonify({'error': '任務不存在'}), 404
+
+    output_path = task_info.get('output_path')
+    if not output_path:
+        status = task_info.get('status', '未知')
+        return jsonify({'error': f'輸出文件尚未生成（任務狀態：{status}）'}), 404
+
+    if not os.path.exists(output_path):
+        return jsonify({'error': f'輸出文件不存在：{output_path}'}), 404
+
     return send_file(
-        task.output_path,
+        output_path,
         as_attachment=True,
-        download_name=os.path.basename(task.output_path),
+        download_name=os.path.basename(output_path),
         mimetype='video/mp4'
     )
+
+
+def _cleanup_task_temp_dirs():
+    """
+    清除所有任務相關的暫存目錄與檔案，確保每次處理都是全新環境。
+    在每個任務開始前以及完成/失敗後均應呼叫，防止前一支影片的殘留資料
+    污染下一次翻譯（可能造成 LLM 幻覺或音訊/影像混用）。
+    """
+    import shutil
+
+    # 需要整棵清除後重建的目錄
+    dirs_to_wipe = [
+        'temp/faceai',
+        'temp/pptai',
+        'temp/audio_segments',
+        'temp/segments',
+        'temp/slides_output',
+        'temp/translated_slides',
+    ]
+    for d in dirs_to_wipe:
+        if os.path.exists(d):
+            try:
+                shutil.rmtree(d)
+                os.makedirs(d, exist_ok=True)
+                print(f"🧹 清除暫存目錄: {d}")
+            except Exception as e:
+                print(f"⚠️  清除 {d} 時發生錯誤: {e}")
+
+    # 零散暫存檔案
+    files_to_remove = [
+        'temp/segments_info.json',
+        'temp/segment_list.txt',
+        'temp/normalized_merge_list.txt',
+        'temp/two_videos_merge_list.txt',
+        'temp/manual_merge_list.txt',
+    ]
+    for f in files_to_remove:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+                print(f"🧹 清除暫存檔案: {f}")
+            except Exception as e:
+                print(f"⚠️  清除 {f} 時發生錯誤: {e}")
 
 
 def process_task_wrapper(task_dict):
@@ -2762,6 +2955,10 @@ def process_task_wrapper(task_dict):
     task_id = task_dict['task_id']
     params = task_dict['params']
     
+    # ── 任務開始前：清除前一支影片的所有暫存資料 ────────────────────────────
+    print(f"[{task_id}] 🧹 任務開始前清除暫存目錄，確保無舊影片殘留...")
+    _cleanup_task_temp_dirs()
+
     try:
         # 創建臨時任務對象用於記錄
         class SimpleTask:
@@ -2786,16 +2983,12 @@ def process_task_wrapper(task_dict):
         processor.process(
             input_path=params['input_path'],
             output_path=params['output_path'],
-            api_key=params['api_key'],
             language=params['voice_language'],
             slide_language=params['slide_language'],
             enable_slide_translation=params['enable_slide_translation'],
             min_segment_duration=params['min_segment_duration'],
             hash_threshold=params['hash_threshold'],
             tts_engine=params.get('tts_engine', 'f5tts'),
-            api_provider=params.get('api_provider', 'gemini'),
-            local_llm_url=params.get('local_llm_url', 'http://localhost:11434/api/generate'),
-            local_llm_model=params.get('local_llm_model', 'llama3.2')
         )
         
         # 複製到輸出儲存目錄
@@ -2812,14 +3005,50 @@ def process_task_wrapper(task_dict):
             shutil.copy2(output_path, storage_path)
             
             print(f"✅ 影片已儲存到: {storage_path}")
-            
+
+            # ── 任務完成後：清除所有暫存資料 ────────────────────────────────
+            print(f"[{task_id}] 🧹 任務完成，清除暫存目錄...")
+            _cleanup_task_temp_dirs()
+
+            # 刪除上傳的原始影片（已複製到長期儲存，節省磁碟空間）
+            input_path = params.get('input_path', '')
+            if input_path and os.path.exists(input_path):
+                try:
+                    os.remove(input_path)
+                    print(f"[{task_id}] 🧹 已刪除原始上傳影片: {input_path}")
+                except Exception as e:
+                    print(f"[{task_id}] ⚠️  刪除上傳影片失敗: {e}")
+
+            # 刪除 audio_files 目錄下的工作輸出（已備份到 OUTPUT_STORAGE）
+            work_output = params.get('output_path', '')
+            if work_output and work_output != storage_path and os.path.exists(work_output):
+                try:
+                    os.remove(work_output)
+                    print(f"[{task_id}] 🧹 已刪除工作輸出檔: {work_output}")
+                except Exception as e:
+                    print(f"[{task_id}] ⚠️  刪除工作輸出失敗: {e}")
+
             return True, storage_path, None
         else:
+            _cleanup_task_temp_dirs()
             return False, None, "輸出文件不存在"
             
     except Exception as e:
         import traceback
         error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        # ── 失敗時也清除暫存，避免汙染下一個任務 ──────────────────────────
+        try:
+            _cleanup_task_temp_dirs()
+        except Exception:
+            pass
+        # 清理上傳的原始影片
+        try:
+            input_path = params.get('input_path', '')
+            if input_path and os.path.exists(input_path):
+                os.remove(input_path)
+                print(f"[{task_id}] 🧹 失敗後清除上傳影片: {input_path}")
+        except Exception:
+            pass
         return False, None, error_msg
 
 
